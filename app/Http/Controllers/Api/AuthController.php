@@ -12,6 +12,32 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    public function register(Request $request): JsonResponse
+    {
+        $request->validate([
+            'name'                  => 'required|string|max:255',
+            'email'                 => 'required|email|unique:users,email',
+            'role'                  => 'required|in:admin,collector,manager,sysadmin,accounting_clerk',
+            'password'              => 'required|string|min:8|confirmed',
+        ]);
+
+        $user = User::create([
+            'name'     => $request->name,
+            'email'    => $request->email,
+            'role'     => $request->role,
+            'password' => Hash::make($request->password),
+        ]);
+
+        $token = $user->createToken('api-token')->plainTextToken;
+
+        AuditLog::record('REGISTER', "USR-{$user->id}", "User {$user->name} registered", $user->id);
+
+        return response()->json([
+            'user'  => $this->userPayload($user),
+            'token' => $token,
+        ], 201);
+    }
+
     public function login(Request $request): JsonResponse
     {
         $request->validate([

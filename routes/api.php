@@ -10,7 +10,8 @@ use App\Http\Controllers\Api\ReportController;
 use Illuminate\Support\Facades\Route;
 
 /* ---------- Public ---------- */
-Route::post('auth/login', [AuthController::class, 'login']);
+Route::post('auth/login',    [AuthController::class, 'login']);
+Route::post('auth/register', [AuthController::class, 'register']);
 
 /* ---------- Protected ---------- */
 Route::middleware('auth:sanctum')->group(function () {
