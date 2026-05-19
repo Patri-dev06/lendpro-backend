@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\Notification;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,6 +38,13 @@ class AuthController extends Controller
         ]);
 
         AuditLog::record('REGISTER', "USR-{$user->id}", "User {$user->name} registered — pending approval", $user->id);
+
+        Notification::notify(
+            'user_pending',
+            'New Registration Awaiting Approval',
+            "{$user->name} has submitted a registration request as {$user->role}.",
+            ['admin', 'sysadmin']
+        );
 
         return response()->json([
             'message' => 'Registration submitted. An administrator will review and approve your account.',

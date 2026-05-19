@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Loan;
+use App\Models\Notification;
 use App\Models\Payment;
 use App\Models\ScheduleRow;
 use Illuminate\Http\JsonResponse;
@@ -79,6 +80,13 @@ class PaymentController extends Controller
                 'RECORD_PAYMENT',
                 $loan->number,
                 "Recorded ₱{$data['amount']} payment for loan {$loan->number}"
+            );
+
+            Notification::notify(
+                'payment_recorded',
+                'Payment Collected',
+                "₱" . number_format($data['amount'], 2) . " collected from {$loan->client->name} ({$loan->number}). Remaining balance: ₱" . number_format($newBalance, 2) . ".",
+                ['admin', 'manager', 'accounting_clerk', 'collector']
             );
 
             return $payment;

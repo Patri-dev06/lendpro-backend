@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\Loan;
+use App\Models\Notification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -39,20 +40,30 @@ class LoanController extends Controller
             'remarks'      => 'nullable|string',
         ]);
 
+        $client = Client::findOrFail($data['client_id']);
+
         $data['total_receivable'] = $data['principal'] + $data['interest'] + $data['service_charge'];
         $data['current_balance']  = $data['total_receivable'];
         $data['due_date']         = Loan::computeDueDate($data['release_date'], $data['term_days'])->toDateString();
         $data['expected_end_date'] = $data['due_date'];
         $data['number']           = Loan::generateNumber();
-        $data['status']           = Client::find($data['client_id'])->type;
+        $data['status']           = $client->type;
 
-        $loan = DB::transaction(function () use ($data) {
+        $loan = DB::transaction(function () use ($data, $client) {
             $loan = Loan::create($data);
             $loan->generateSchedule();
 
-            Client::find($data['client_id'])->update(['status' => $data['status']]);
+            $client->update(['status' => $data['status']]);
 
             AuditLog::record('CREATE_LOAN', $loan->number, "Created {$data['loan_type']} for client #{$data['client_id']}");
+
+            $loanTypeLabel = ucfirst(str_replace('-', ' ', $data['loan_type']));
+            Notification::notify(
+                'loan_created',
+                'New Loan Released',
+                "{$loanTypeLabel} of ₱" . number_format($data['principal'], 2) . " released to {$client->name} ({$loan->number}).",
+                ['admin', 'manager', 'accounting_clerk']
+            );
 
             return $loan;
         });

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\AuditLog;
+use App\Models\Notification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -11,27 +11,27 @@ class NotificationController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $user     = $request->user();
-        $readAt   = $user->notifications_read_at;
+        $user   = $request->user();
+        $role   = $user->role;
+        $readAt = $user->notifications_read_at;
 
-        $logs = AuditLog::with('user:id,name')
-            ->orderByDesc('performed_at')
+        $notifications = Notification::whereJsonContains('for_roles', $role)
+            ->orderByDesc('created_at')
             ->limit(30)
             ->get()
-            ->map(fn ($log) => [
-                'id'          => $log->id,
-                'action'      => $log->action,
-                'record'      => $log->record,
-                'description' => $log->description,
-                'performed_by'=> $log->user?->name,
-                'performed_at'=> $log->performed_at,
-                'is_read'     => $readAt && $log->performed_at->lte($readAt),
+            ->map(fn ($n) => [
+                'id'         => $n->id,
+                'type'       => $n->type,
+                'title'      => $n->title,
+                'body'       => $n->body,
+                'created_at' => $n->created_at,
+                'is_read'    => $readAt && $n->created_at->lte($readAt),
             ]);
 
-        $unread = $logs->where('is_read', false)->count();
+        $unread = $notifications->where('is_read', false)->count();
 
         return response()->json([
-            'notifications' => $logs,
+            'notifications' => $notifications,
             'unread_count'  => $unread,
         ]);
     }

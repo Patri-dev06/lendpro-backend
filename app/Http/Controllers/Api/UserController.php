@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\Notification;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -82,6 +83,13 @@ class UserController extends Controller
         $user->update(['is_approved' => true]);
 
         AuditLog::record('APPROVE_USER', "USR-{$user->id}", "Approved user {$user->name}");
+
+        Notification::notify(
+            'user_approved',
+            'User Account Approved',
+            "{$user->name}'s {$user->role} account has been approved and can now log in.",
+            ['admin', 'sysadmin']
+        );
 
         return response()->json($this->payload($user));
     }
