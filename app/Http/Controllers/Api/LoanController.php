@@ -92,4 +92,18 @@ class LoanController extends Controller
         AuditLog::record('DELETE_LOAN', $loan->number, "Deleted loan {$loan->number}");
         return response()->json(['message' => 'Loan deleted.']);
     }
+
+    public function regenerateSchedule(Loan $loan): JsonResponse
+    {
+        if ($loan->status === 'paid') {
+            return response()->json(['message' => 'Cannot regenerate schedule for a fully paid loan.'], 422);
+        }
+
+        DB::transaction(function () use ($loan) {
+            $loan->generateSchedule();
+            AuditLog::record('REGENERATE_SCHEDULE', $loan->number, "Regenerated collection schedule for loan {$loan->number}");
+        });
+
+        return response()->json($loan->scheduleRows()->orderBy('scheduled_date')->get());
+    }
 }

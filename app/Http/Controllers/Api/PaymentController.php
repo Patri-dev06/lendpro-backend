@@ -133,4 +133,109 @@ class PaymentController extends Controller
         $payment->delete();
         return response()->json(['message' => 'Payment deleted.']);
     }
+
+    public function uploadCsv(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => 'required|file|max:5120',
+        ]);
+
+        $handle = fopen($request->file('file')->getRealPath(), 'r');
+
+        // Skip header row
+        fgetcsv($handle);
+
+        $valid  = [];
+        $errors = [];
+        $rowNum = 1;
+
+        while (($row = fgetcsv($handle)) !== false) {
+            $rowNum++;
+            $row = array_map('trim', $row);
+
+            if (count($row) < 3) {
+                $errors[] = "Row {$rowNum}: expected at least 3 columns (loan_number, payment_date, amount).";
+                continue;
+            }
+
+            [$loanNumber, $paymentDate, $rawAmount] = $row;
+            $remarks = $row[3] ?? null;
+
+            if (! $loanNumber || ! $paymentDate || ! is_numeric($rawAmount)) {
+                $errors[] = "Row {$rowNum}: invalid data.";
+                continue;
+            }
+
+            $loan = Loan::where('number', $loanNumber)->first();
+            if (! $loan) {
+                $errors[] = "Row {$rowNum}: loan '{$loanNumber}' not found.";
+                continue;
+            }
+
+            $valid[] = [
+                'loan'         => $loan,
+                'payment_date' => $paymentDate,
+                'amount'       => (float) $rawAmount,
+                'remarks'      => $remarks,
+            ];
+        }
+
+        fclose($handle);
+
+        if (empty($valid)) {
+            return response()->json(['errors' => $errors], 422);
+        }
+
+        $imported = DB::transaction(function () use ($valid) {
+            $payments = [];
+
+            foreach ($valid as $r) {
+                $loan       = $r['loan'];
+                $prev       = $loan->current_balance;
+                $newBalance = max(0, $prev - $r['amount']);
+
+                $payments[] = Payment::create([
+                    'loan_id'          => $loan->id,
+                    'client_id'        => $loan->client_id,
+                    'collector_id'     => $loan->collector_id,
+                    'recorded_by'      => auth()->id(),
+                    'payment_date'     => $r['payment_date'],
+                    'amount'           => $r['amount'],
+                    'previous_balance' => $prev,
+                    'new_balance'      => $newBalance,
+                    'remarks'          => $r['remarks'],
+                ]);
+
+                $loan->update([
+                    'current_balance' => $newBalance,
+                    'status'          => $newBalance <= 0 ? 'paid' : $loan->status,
+                ]);
+
+                if ($newBalance <= 0) {
+                    $loan->client->update(['status' => 'paid']);
+                }
+
+                $scheduleRow = ScheduleRow::where('loan_id', $loan->id)
+                    ->whereDate('scheduled_date', $r['payment_date'])
+                    ->first();
+
+                if ($scheduleRow) {
+                    $scheduleRow->update([
+                        'actual'        => $r['amount'],
+                        'balance_after' => $newBalance,
+                        'status'        => $r['amount'] >= $scheduleRow->expected ? 'paid' : 'partial',
+                    ]);
+                }
+            }
+
+            AuditLog::record('BULK_PAYMENT_UPLOAD', 'BULK', 'Bulk uploaded ' . count($payments) . ' payments via CSV');
+
+            return $payments;
+        });
+
+        return response()->json([
+            'imported' => count($imported),
+            'errors'   => $errors,
+        ], 201);
+    }
 }

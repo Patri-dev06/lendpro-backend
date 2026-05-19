@@ -7,6 +7,8 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\SettingController;
+use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 /* ---------- Public ---------- */
@@ -17,7 +19,7 @@ Route::post('auth/register', [AuthController::class, 'register']);
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('auth/logout', [AuthController::class, 'logout']);
-    Route::get('auth/me', [AuthController::class, 'me']);
+    Route::get('auth/me',      [AuthController::class, 'me']);
 
     /* Dashboard */
     Route::get('dashboard/stats', [DashboardController::class, 'stats']);
@@ -29,14 +31,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('collectors', CollectorController::class);
 
     /* Loans */
-    Route::get('loans/{loan}/schedule', [LoanController::class, 'schedule']);
+    Route::post('loans/{loan}/schedule/regenerate', [LoanController::class, 'regenerateSchedule']);
+    Route::get('loans/{loan}/schedule',             [LoanController::class, 'schedule']);
     Route::apiResource('loans', LoanController::class);
 
     /* Payments */
+    Route::post('payments/upload',           [PaymentController::class, 'uploadCsv']);
     Route::get('payments/collector-summary', [PaymentController::class, 'collectorSummary']);
     Route::apiResource('payments', PaymentController::class)->except(['update', 'destroy']);
-    Route::patch('payments/{payment}', [PaymentController::class, 'update']);
+    Route::patch('payments/{payment}',  [PaymentController::class, 'update']);
     Route::delete('payments/{payment}', [PaymentController::class, 'destroy']);
+
+    /* Users */
+    Route::apiResource('users', UserController::class);
+
+    /* Settings */
+    Route::get('settings',   [SettingController::class, 'index']);
+    Route::patch('settings', [SettingController::class, 'update']);
 
     /* Reports */
     Route::prefix('reports')->group(function () {
