@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\CollectorController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\LoanController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\SettingController;
@@ -44,6 +45,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     /* Users */
     Route::apiResource('users', UserController::class);
+
+    /* Notifications */
+    Route::get('notifications',           [NotificationController::class, 'index']);
+    Route::post('notifications/mark-read',[NotificationController::class, 'markRead']);
 
     /* Settings */
     Route::get('settings',   [SettingController::class, 'index']);
