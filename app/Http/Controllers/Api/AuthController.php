@@ -29,19 +29,18 @@ class AuthController extends Controller
         ]);
 
         $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
-            'role'     => $request->role,
-            'password' => Hash::make($request->password),
+            'name'        => $request->name,
+            'email'       => $request->email,
+            'role'        => $request->role,
+            'password'    => Hash::make($request->password),
+            'is_approved' => false,
         ]);
 
-        $token = $user->createToken('api-token')->plainTextToken;
-
-        AuditLog::record('REGISTER', "USR-{$user->id}", "User {$user->name} registered", $user->id);
+        AuditLog::record('REGISTER', "USR-{$user->id}", "User {$user->name} registered — pending approval", $user->id);
 
         return response()->json([
-            'user'  => $this->userPayload($user),
-            'token' => $token,
+            'message' => 'Registration submitted. An administrator will review and approve your account.',
+            'pending' => true,
         ], 201);
     }
 
@@ -58,6 +57,12 @@ class AuthController extends Controller
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
+        }
+
+        if (! $user->is_approved) {
+            return response()->json([
+                'message' => 'Your account is pending administrator approval. Please try again later.',
+            ], 403);
         }
 
         $token = $user->createToken('api-token')->plainTextToken;

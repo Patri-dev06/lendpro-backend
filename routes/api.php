@@ -83,6 +83,7 @@ Route::middleware('auth:sanctum')->group(function () {
     /* ── Users ── */
     Route::middleware('role:admin,sysadmin')->group(function () {
         Route::apiResource('users', UserController::class);
+        Route::patch('users/{user}/approve', [UserController::class, 'approve']);
     });
 
     /* ── Settings ── */

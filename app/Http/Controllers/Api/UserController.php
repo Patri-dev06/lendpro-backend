@@ -14,7 +14,8 @@ class UserController extends Controller
 {
     public function index(): JsonResponse
     {
-        $users = User::select('id', 'name', 'email', 'role', 'created_at')
+        $users = User::select('id', 'name', 'email', 'role', 'is_approved', 'created_at')
+            ->orderBy('is_approved')   // pending first
             ->orderBy('name')
             ->get();
 
@@ -35,10 +36,11 @@ class UserController extends Controller
         ]);
 
         $user = User::create([
-            'name'     => $data['name'],
-            'email'    => $data['email'],
-            'role'     => $data['role'],
-            'password' => Hash::make($data['password']),
+            'name'        => $data['name'],
+            'email'       => $data['email'],
+            'role'        => $data['role'],
+            'password'    => Hash::make($data['password']),
+            'is_approved' => true,
         ]);
 
         AuditLog::record('CREATE_USER', "USR-{$user->id}", "Created user {$user->name}");
@@ -71,6 +73,19 @@ class UserController extends Controller
         return response()->json($this->payload($user));
     }
 
+    public function approve(User $user): JsonResponse
+    {
+        if ($user->is_approved) {
+            return response()->json(['message' => 'User is already approved.'], 422);
+        }
+
+        $user->update(['is_approved' => true]);
+
+        AuditLog::record('APPROVE_USER', "USR-{$user->id}", "Approved user {$user->name}");
+
+        return response()->json($this->payload($user));
+    }
+
     public function destroy(User $user): JsonResponse
     {
         if ($user->id === auth()->id()) {
@@ -88,11 +103,12 @@ class UserController extends Controller
     private function payload(User $user): array
     {
         return [
-            'id'         => $user->id,
-            'name'       => $user->name,
-            'email'      => $user->email,
-            'role'       => $user->role,
-            'created_at' => $user->created_at,
+            'id'          => $user->id,
+            'name'        => $user->name,
+            'email'       => $user->email,
+            'role'        => $user->role,
+            'is_approved' => $user->is_approved,
+            'created_at'  => $user->created_at,
         ];
     }
 }
