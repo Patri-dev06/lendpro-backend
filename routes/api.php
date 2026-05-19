@@ -69,9 +69,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     /* ── Payments ── */
     Route::middleware('role:admin,manager,accounting_clerk,collector')->group(function () {
-        Route::get('payments',           [PaymentController::class, 'index']);
-        Route::get('payments/{payment}', [PaymentController::class, 'show']);
-        Route::get('payments/collector-summary', [PaymentController::class, 'collectorSummary']);
+        Route::get('payments',                    [PaymentController::class, 'index']);
+        Route::get('payments/collector-summary',  [PaymentController::class, 'collectorSummary']);
+        Route::get('payments/{payment}',          [PaymentController::class, 'show']);
     });
     Route::middleware('role:admin,accounting_clerk,collector')->group(function () {
         Route::post('payments',              [PaymentController::class, 'store']);
