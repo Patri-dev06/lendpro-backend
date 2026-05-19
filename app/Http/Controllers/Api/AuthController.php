@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -18,7 +19,13 @@ class AuthController extends Controller
             'name'                  => 'required|string|max:255',
             'email'                 => 'required|email|unique:users,email',
             'role'                  => 'required|in:admin,collector,manager,sysadmin,accounting_clerk',
-            'password'              => 'required|string|min:8|confirmed',
+            'password'              => ['required', 'string', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
+        ], [
+            'email.unique'          => 'This email is already in use. Please use a different one.',
+            'name.required'         => 'Full name is required.',
+            'email.required'        => 'Email address is required.',
+            'email.email'           => 'Please enter a valid email address.',
+            'password.confirmed'    => 'Passwords do not match.',
         ]);
 
         $user = User::create([
