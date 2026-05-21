@@ -102,29 +102,41 @@ class PaymentController extends Controller
 
     public function collectorSummary(Request $request): JsonResponse
     {
-        $date = $request->get('date', today()->toDateString());
+        $date        = $request->get('date', today()->toDateString());
         $collectorId = $request->get('collector_id');
 
-        $loans = Loan::with(['client', 'payments' => fn ($q) => $q->whereDate('payment_date', $date)])
+        $loans = Loan::with([
+            'client',
+            'payments'     => fn ($q) => $q->whereDate('payment_date', $date),
+            'scheduleRows' => fn ($q) => $q->whereDate('scheduled_date', '<', $date)
+                                           ->whereIn('status', ['pending', 'partial']),
+        ])
             ->where('status', '!=', 'paid')
             ->when($collectorId, fn ($q, $id) => $q->where('collector_id', $id))
             ->get();
 
-        $rows = $loans->map(fn ($l) => [
-            'loan_number'  => $l->number,
-            'client_name'  => $l->client->name,
-            'collectible'  => $l->daily_payment,
-            'balance'      => $l->current_balance,
-            'payment'      => $l->payments->sum('amount'),
-        ]);
+        $rows = $loans->map(function ($l) {
+            $carryOver   = $l->scheduleRows->sum(fn ($r) => $r->expected - $r->actual);
+            $collectible = $l->daily_payment + $carryOver;
+
+            return [
+                'loan_number' => $l->number,
+                'client_name' => $l->client->name,
+                'daily'       => round($l->daily_payment, 2),
+                'carry_over'  => round($carryOver, 2),
+                'collectible' => round($collectible, 2),
+                'balance'     => round($l->current_balance, 2),
+                'payment'     => round($l->payments->sum('amount'), 2),
+            ];
+        });
 
         return response()->json([
-            'date'  => $date,
-            'rows'  => $rows,
-            'totals'=> [
-                'collectible' => $rows->sum('collectible'),
-                'balance'     => $rows->sum('balance'),
-                'payment'     => $rows->sum('payment'),
+            'date'   => $date,
+            'rows'   => $rows,
+            'totals' => [
+                'collectible' => round($rows->sum('collectible'), 2),
+                'balance'     => round($rows->sum('balance'), 2),
+                'payment'     => round($rows->sum('payment'), 2),
             ],
         ]);
     }
