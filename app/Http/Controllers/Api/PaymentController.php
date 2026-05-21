@@ -77,6 +77,7 @@ class PaymentController extends Controller
                 $newActual = $scheduleRow->actual + $data['amount'];
                 $scheduleRow->update([
                     'actual'        => $newActual,
+                    'payment_date'  => $data['payment_date'],
                     'balance_after' => $newBalance,
                     'status'        => $newActual >= $scheduleRow->expected ? 'paid' : 'partial',
                 ]);
@@ -254,6 +255,7 @@ class PaymentController extends Controller
                     $newActual = $scheduleRow->actual + $r['amount'];
                     $scheduleRow->update([
                         'actual'        => $newActual,
+                        'payment_date'  => $r['payment_date'],
                         'balance_after' => $newBalance,
                         'status'        => $newActual >= $scheduleRow->expected ? 'paid' : 'partial',
                     ]);

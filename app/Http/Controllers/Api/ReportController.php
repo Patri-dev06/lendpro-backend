@@ -74,6 +74,7 @@ class ReportController extends Controller
         $schedule = $loan->scheduleRows->map(fn ($row) => [
             'day'              => $row->id,
             'scheduled_date'   => $row->scheduled_date,
+            'payment_date'     => $row->payment_date,
             'expected'         => $row->expected,
             'actual'           => $row->actual,
             'previous_balance' => $row->previous_balance,
