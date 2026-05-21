@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\Loan;
 use App\Models\Notification;
+use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,16 +43,18 @@ class LoanController extends Controller
 
         $client = Client::findOrFail($data['client_id']);
 
+        $holidays = array_column(json_decode(Setting::get('holidays', '[]'), true) ?? [], 'date');
+
         $data['total_receivable'] = $data['principal'] + $data['interest'] + $data['service_charge'];
         $data['current_balance']  = $data['total_receivable'];
-        $data['due_date']         = Loan::computeDueDate($data['release_date'], $data['term_days'])->toDateString();
+        $data['due_date']         = Loan::computeDueDate($data['release_date'], $data['term_days'], $holidays)->toDateString();
         $data['expected_end_date'] = $data['due_date'];
         $data['number']           = Loan::generateNumber();
         $data['status']           = $client->type;
 
-        $loan = DB::transaction(function () use ($data, $client) {
+        $loan = DB::transaction(function () use ($data, $client, $holidays) {
             $loan = Loan::create($data);
-            $loan->generateSchedule();
+            $loan->generateSchedule($holidays);
 
             $client->update(['status' => $data['status']]);
 
@@ -110,8 +113,10 @@ class LoanController extends Controller
             return response()->json(['message' => 'Cannot regenerate schedule for a fully paid loan.'], 422);
         }
 
-        DB::transaction(function () use ($loan) {
-            $loan->generateSchedule();
+        $holidays = array_column(json_decode(Setting::get('holidays', '[]'), true) ?? [], 'date');
+
+        DB::transaction(function () use ($loan, $holidays) {
+            $loan->generateSchedule($holidays);
             AuditLog::record('REGENERATE_SCHEDULE', $loan->number, "Regenerated collection schedule for loan {$loan->number}");
         });
 

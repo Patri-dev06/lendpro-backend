@@ -60,21 +60,23 @@ class Loan extends Model
         return sprintf('LN-%d-%04d', $year, $last + 1);
     }
 
-    public static function computeDueDate(string $releaseDate, int $termDays): Carbon
+    public static function computeDueDate(string $releaseDate, int $termDays, array $holidays = []): Carbon
     {
+        $holidaySet = array_flip($holidays);
         $date = Carbon::parse($releaseDate);
         $added = 0;
         while ($added < $termDays) {
             $date->addDay();
-            if ($date->dayOfWeek !== Carbon::SUNDAY) {
+            if ($date->dayOfWeek !== Carbon::SUNDAY && !isset($holidaySet[$date->toDateString()])) {
                 $added++;
             }
         }
         return $date;
     }
 
-    public function generateSchedule(): void
+    public function generateSchedule(array $holidays = []): void
     {
+        $holidaySet = array_flip($holidays);
         $this->scheduleRows()->delete();
         $date = Carbon::parse($this->release_date);
         $balance = $this->total_receivable;
@@ -83,7 +85,7 @@ class Loan extends Model
         for ($i = 0; $i < $this->term_days; $i++) {
             do {
                 $date->addDay();
-            } while ($date->dayOfWeek === Carbon::SUNDAY);
+            } while ($date->dayOfWeek === Carbon::SUNDAY || isset($holidaySet[$date->toDateString()]));
 
             $prev = $balance;
             $balance = max(0, $balance - $this->daily_payment);
