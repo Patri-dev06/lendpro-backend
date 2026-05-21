@@ -14,7 +14,8 @@ class CollectorController extends Controller
     {
         $collectors = Collector::with(['clients', 'loans', 'payments'])->get()->map(function ($c) {
             $activeLoans = $c->loans->whereNotIn('status', ['paid']);
-            $todayActual = $c->payments->whereDate('payment_date', today())->sum('amount');
+            $todayStr    = today()->toDateString();
+            $todayActual = $c->payments->filter(fn ($p) => substr((string) $p->payment_date, 0, 10) === $todayStr)->sum('amount');
 
             return [
                 'id'       => $c->id,
@@ -50,7 +51,7 @@ class CollectorController extends Controller
     public function show(Collector $collector): JsonResponse
     {
         $activeLoans = $collector->loans->whereNotIn('status', ['paid']);
-        $todayActual = $collector->payments->whereDate('payment_date', today())->sum('amount');
+        $todayActual = $collector->payments()->whereDate('payment_date', today())->sum('amount');
 
         return response()->json([
             'id'       => $collector->id,
