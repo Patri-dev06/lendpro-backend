@@ -66,13 +66,19 @@ class PaymentController extends Controller
 
             $scheduleRow = ScheduleRow::where('loan_id', $loan->id)
                 ->whereDate('scheduled_date', $data['payment_date'])
-                ->first();
+                ->whereIn('status', ['pending', 'partial'])
+                ->first()
+                ?? ScheduleRow::where('loan_id', $loan->id)
+                    ->whereIn('status', ['pending', 'partial'])
+                    ->orderBy('scheduled_date')
+                    ->first();
 
             if ($scheduleRow) {
+                $newActual = $scheduleRow->actual + $data['amount'];
                 $scheduleRow->update([
-                    'actual'       => $data['amount'],
-                    'balance_after'=> $newBalance,
-                    'status'       => $data['amount'] >= $scheduleRow->expected ? 'paid' : 'partial',
+                    'actual'        => $newActual,
+                    'balance_after' => $newBalance,
+                    'status'        => $newActual >= $scheduleRow->expected ? 'paid' : 'partial',
                 ]);
             }
 
@@ -237,13 +243,19 @@ class PaymentController extends Controller
 
                 $scheduleRow = ScheduleRow::where('loan_id', $loan->id)
                     ->whereDate('scheduled_date', $r['payment_date'])
-                    ->first();
+                    ->whereIn('status', ['pending', 'partial'])
+                    ->first()
+                    ?? ScheduleRow::where('loan_id', $loan->id)
+                        ->whereIn('status', ['pending', 'partial'])
+                        ->orderBy('scheduled_date')
+                        ->first();
 
                 if ($scheduleRow) {
+                    $newActual = $scheduleRow->actual + $r['amount'];
                     $scheduleRow->update([
-                        'actual'        => $r['amount'],
+                        'actual'        => $newActual,
                         'balance_after' => $newBalance,
-                        'status'        => $r['amount'] >= $scheduleRow->expected ? 'paid' : 'partial',
+                        'status'        => $newActual >= $scheduleRow->expected ? 'paid' : 'partial',
                     ]);
                 }
             }
