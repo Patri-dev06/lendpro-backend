@@ -29,17 +29,20 @@ class LoanController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'client_id'    => 'required|exists:clients,id',
-            'collector_id' => 'required|exists:collectors,id',
-            'loan_type'    => 'required|in:new-loan,reloan,reconstruct',
-            'principal'    => 'required|numeric|min:1',
-            'interest'     => 'required|numeric|min:0',
-            'service_charge' => 'required|numeric|min:0',
-            'daily_payment'  => 'required|numeric|min:1',
-            'term_days'    => 'required|integer|in:30,45,60',
-            'release_date' => 'required|date',
-            'remarks'      => 'nullable|string',
+            'client_id'     => 'required|exists:clients,id',
+            'collector_id'  => 'required|exists:collectors,id',
+            'loan_type'     => 'required|in:new-loan,reloan,reconstruct',
+            'principal'     => 'required|numeric|min:1',
+            'interest'      => 'required|numeric|min:0',
+            'service_charge'=> 'required|numeric|min:0',
+            'daily_payment' => 'required|numeric|min:1',
+            'term_days'     => 'required|integer|min:1',
+            'holiday_count' => 'sometimes|integer|min:0|max:5',
+            'release_date'  => 'required|date',
+            'remarks'       => 'nullable|string',
         ]);
+
+        $data['holiday_count'] = $data['holiday_count'] ?? 0;
 
         $client = Client::findOrFail($data['client_id']);
 
@@ -47,7 +50,7 @@ class LoanController extends Controller
 
         $data['total_receivable'] = $data['principal'] + $data['interest'] + $data['service_charge'];
         $data['current_balance']  = $data['total_receivable'];
-        $data['due_date']         = Loan::computeDueDate($data['release_date'], $data['term_days'], $holidays)->toDateString();
+        $data['due_date']         = Loan::computeDueDate($data['release_date'], $data['term_days'] + $data['holiday_count'], $holidays)->toDateString();
         $data['expected_end_date'] = $data['due_date'];
         $data['number']           = Loan::generateNumber();
         $data['status']           = $client->type;

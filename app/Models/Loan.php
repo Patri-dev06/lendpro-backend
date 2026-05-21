@@ -15,7 +15,7 @@ class Loan extends Model
     protected $fillable = [
         'number', 'client_id', 'collector_id', 'loan_type',
         'principal', 'interest', 'service_charge', 'total_receivable',
-        'daily_payment', 'term_days', 'current_balance',
+        'daily_payment', 'term_days', 'holiday_count', 'current_balance',
         'release_date', 'due_date', 'expected_end_date',
         'status', 'remarks',
     ];
@@ -28,6 +28,7 @@ class Loan extends Model
         'daily_payment'   => 'float',
         'current_balance' => 'float',
         'term_days'       => 'integer',
+        'holiday_count'   => 'integer',
         'release_date'    => 'date',
         'due_date'        => 'date',
         'expected_end_date' => 'date',
