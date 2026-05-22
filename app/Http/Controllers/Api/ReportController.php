@@ -13,8 +13,8 @@ class ReportController extends Controller
 {
     public function monthlyReleases(): JsonResponse
     {
-        $data = Loan::selectRaw("strftime('%Y-%m', release_date) as month, SUM(total_receivable) as releases, COUNT(*) as count")
-            ->groupByRaw("strftime('%Y-%m', release_date)")
+        $data = Loan::selectRaw("TO_CHAR(release_date, 'YYYY-MM') as month, SUM(total_receivable) as releases, COUNT(*) as count")
+            ->groupByRaw("TO_CHAR(release_date, 'YYYY-MM')")
             ->orderBy('month')
             ->get();
 
@@ -23,8 +23,8 @@ class ReportController extends Controller
 
     public function monthlyCollection(): JsonResponse
     {
-        $data = Payment::selectRaw("strftime('%Y-%m', payment_date) as month, SUM(amount) as collected, COUNT(*) as transactions")
-            ->groupByRaw("strftime('%Y-%m', payment_date)")
+        $data = Payment::selectRaw("TO_CHAR(payment_date, 'YYYY-MM') as month, SUM(amount) as collected, COUNT(*) as transactions")
+            ->groupByRaw("TO_CHAR(payment_date, 'YYYY-MM')")
             ->orderBy('month')
             ->get();
 
@@ -36,7 +36,7 @@ class ReportController extends Controller
         $month = $request->get('month', now()->format('Y-m'));
 
         $collectors = Collector::with(['clients', 'loans', 'payments' => fn ($q) =>
-            $q->whereRaw("strftime('%Y-%m', payment_date) = ?", [$month])
+            $q->whereRaw("TO_CHAR(payment_date, 'YYYY-MM') = ?", [$month])
         ])->get()->map(function ($c) use ($month) {
             $activeLoans = $c->loans->whereNotIn('status', ['paid']);
             $collected   = $c->payments->sum('amount');

@@ -13,12 +13,14 @@ class Client extends Model
 
     protected $fillable = [
         'number', 'name', 'store_name', 'address', 'phone', 'email',
-        'type', 'collector_id', 'status',
+        'type', 'collector_id', 'status', 'latitude', 'longitude',
     ];
 
     protected $casts = [
-        'type'   => 'string',
-        'status' => 'string',
+        'type'      => 'string',
+        'status'    => 'string',
+        'latitude'  => 'float',
+        'longitude' => 'float',
     ];
 
     public function collector(): BelongsTo

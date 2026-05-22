@@ -37,6 +37,8 @@ class ClientController extends Controller
             'email'        => 'nullable|email|max:255',
             'type'         => 'required|in:new,renew',
             'collector_id' => 'required|exists:collectors,id',
+            'latitude'     => 'nullable|numeric|between:-90,90',
+            'longitude'    => 'nullable|numeric|between:-180,180',
         ]);
 
         $year   = now()->year;
@@ -67,6 +69,8 @@ class ClientController extends Controller
             'type'         => 'sometimes|in:new,renew',
             'collector_id' => 'sometimes|exists:collectors,id',
             'status'       => 'sometimes|in:new,renew,overdue,past-due,paid',
+            'latitude'     => 'nullable|numeric|between:-90,90',
+            'longitude'    => 'nullable|numeric|between:-180,180',
         ]);
 
         $client->update($data);
