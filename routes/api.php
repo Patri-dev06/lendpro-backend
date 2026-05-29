@@ -54,7 +54,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /* ── Loans ── */
-    Route::middleware('role:admin,manager')->group(function () {
+    Route::middleware('role:admin,manager,accounting_clerk,collector')->group(function () {
         Route::get('loans',         [LoanController::class, 'index']);
         Route::get('loans/{loan}',  [LoanController::class, 'show']);
         Route::get('loans/{loan}/schedule', [LoanController::class, 'schedule']);
@@ -87,8 +87,8 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /* ── Settings ── */
+    Route::get('settings', [SettingController::class, 'index']); // all users need session_timeout_minutes
     Route::middleware('role:admin,sysadmin')->group(function () {
-        Route::get('settings',   [SettingController::class, 'index']);
         Route::patch('settings', [SettingController::class, 'update']);
     });
 

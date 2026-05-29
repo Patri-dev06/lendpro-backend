@@ -17,14 +17,15 @@ class DatabaseSeeder extends Seeder
     {
         /* ---- Users ---- */
         $admin = User::create([
-            'name'     => 'Alex Dela Cruz',
-            'email'    => 'alex@lendpro.ph',
-            'password' => Hash::make('password'),
-            'role'     => 'sysadmin',
+            'name'        => 'Alex Dela Cruz',
+            'email'       => 'alex@lendpro.ph',
+            'password'    => Hash::make('password'),
+            'role'        => 'admin',
+            'is_approved' => true,
         ]);
-        User::create(['name' => 'Grace Sy',     'email' => 'grace.sy@lendpro.ph',    'password' => Hash::make('password'), 'role' => 'manager']);
-        User::create(['name' => 'IT Admin',     'email' => 'it@lendpro.ph',          'password' => Hash::make('password'), 'role' => 'sysadmin']);
-        User::create(['name' => 'Accounting',   'email' => 'accounting@lendpro.ph',  'password' => Hash::make('password'), 'role' => 'accounting_clerk']);
+        User::create(['name' => 'Grace Sy',   'email' => 'grace.sy@lendpro.ph',   'password' => Hash::make('password'), 'role' => 'manager',          'is_approved' => true]);
+        User::create(['name' => 'IT Admin',   'email' => 'it@lendpro.ph',         'password' => Hash::make('password'), 'role' => 'sysadmin',         'is_approved' => true]);
+        User::create(['name' => 'Accounting', 'email' => 'accounting@lendpro.ph', 'password' => Hash::make('password'), 'role' => 'accounting_clerk', 'is_approved' => true]);
 
         /* ---- Collectors ---- */
         $collectors = collect([
@@ -43,7 +44,7 @@ class DatabaseSeeder extends Seeder
             ['name' => 'John Ramos',   'email' => 'john.ramos@lendpro.ph',   'role' => 'collector'],
             ['name' => 'Liza Mendoza', 'email' => 'liza.mendoza@lendpro.ph', 'role' => 'collector'],
         ] as $u) {
-            User::create(array_merge($u, ['password' => Hash::make('password')]));
+            User::create(array_merge($u, ['password' => Hash::make('password'), 'is_approved' => true]));
         }
 
         /* ---- Clients ---- */
