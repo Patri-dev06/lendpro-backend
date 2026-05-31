@@ -30,7 +30,6 @@ class LoanController extends Controller
     {
         $data = $request->validate([
             'client_id'     => 'required|exists:clients,id',
-            'collector_id'  => 'required|exists:collectors,id',
             'loan_type'     => 'required|in:new-loan,reloan,reconstruct',
             'principal'     => 'required|numeric|min:1',
             'interest'      => 'required|numeric|min:0',
@@ -48,7 +47,7 @@ class LoanController extends Controller
 
         $holidays = array_column(json_decode(Setting::get('holidays', '[]'), true) ?? [], 'date');
 
-        $data['total_receivable'] = $data['principal'] + $data['interest'] + $data['service_charge'];
+        $data['total_receivable'] = $data['principal'] + $data['interest']; // processing fee deducted from release, not added to balance
         $data['current_balance']  = $data['total_receivable'];
         $data['due_date']         = Loan::computeDueDate($data['release_date'], $data['term_days'] + $data['holiday_count'], $holidays)->toDateString();
         $data['expected_end_date'] = $data['due_date'];
@@ -108,6 +107,11 @@ class LoanController extends Controller
         $loan->delete();
         AuditLog::record('DELETE_LOAN', $loan->number, "Deleted loan {$loan->number}");
         return response()->json(['message' => 'Loan deleted.']);
+    }
+
+    public function penalties(Loan $loan): JsonResponse
+    {
+        return response()->json($loan->penalties()->get());
     }
 
     public function regenerateSchedule(Loan $loan): JsonResponse

@@ -19,8 +19,9 @@ Route::post('auth/register', [AuthController::class, 'register']);
 /* ---------- Protected ---------- */
 Route::middleware('auth:sanctum')->group(function () {
 
-    Route::post('auth/logout', [AuthController::class, 'logout']);
-    Route::get('auth/me',      [AuthController::class, 'me']);
+    Route::post('auth/logout',           [AuthController::class, 'logout']);
+    Route::get('auth/me',                [AuthController::class, 'me']);
+    Route::patch('auth/change-password', [AuthController::class, 'changePassword']);
 
     /* Notifications (all authenticated users) */
     Route::get('notifications',            [NotificationController::class, 'index']);
@@ -34,37 +35,43 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('clients',        [ClientController::class, 'index']);
         Route::get('clients/{client}',[ClientController::class, 'show']);
     });
-    Route::middleware('role:admin')->group(function () {
-        Route::post('clients',              [ClientController::class, 'store']);
-        Route::put('clients/{client}',      [ClientController::class, 'update']);
-        Route::patch('clients/{client}',    [ClientController::class, 'update']);
-        Route::delete('clients/{client}',   [ClientController::class, 'destroy']);
+    Route::middleware('role:admin,manager')->group(function () {
+        Route::post('clients',           [ClientController::class, 'store']);
+        Route::put('clients/{client}',   [ClientController::class, 'update']);
+        Route::patch('clients/{client}', [ClientController::class, 'update']);
     });
+    Route::middleware('role:admin')->group(function () {
+        Route::delete('clients/{client}', [ClientController::class, 'destroy']);
+    });
+
 
     /* ── Collectors ── */
     Route::middleware('role:admin,manager,accounting_clerk')->group(function () {
         Route::get('collectors',             [CollectorController::class, 'index']);
         Route::get('collectors/{collector}', [CollectorController::class, 'show']);
     });
-    Route::middleware('role:admin')->group(function () {
-        Route::post('collectors',                    [CollectorController::class, 'store']);
-        Route::put('collectors/{collector}',         [CollectorController::class, 'update']);
-        Route::patch('collectors/{collector}',       [CollectorController::class, 'update']);
-        Route::delete('collectors/{collector}',      [CollectorController::class, 'destroy']);
+    Route::middleware('role:admin,manager')->group(function () {
+        Route::post('collectors',              [CollectorController::class, 'store']);
+        Route::put('collectors/{collector}',   [CollectorController::class, 'update']);
+        Route::patch('collectors/{collector}', [CollectorController::class, 'update']);
+        Route::delete('collectors/{collector}',[CollectorController::class, 'destroy']);
     });
 
     /* ── Loans ── */
     Route::middleware('role:admin,manager,accounting_clerk,collector')->group(function () {
-        Route::get('loans',         [LoanController::class, 'index']);
-        Route::get('loans/{loan}',  [LoanController::class, 'show']);
-        Route::get('loans/{loan}/schedule', [LoanController::class, 'schedule']);
+        Route::get('loans',                    [LoanController::class, 'index']);
+        Route::get('loans/{loan}',             [LoanController::class, 'show']);
+        Route::get('loans/{loan}/schedule',    [LoanController::class, 'schedule']);
+        Route::get('loans/{loan}/penalties',   [LoanController::class, 'penalties']);
+    });
+    Route::middleware('role:admin,manager')->group(function () {
+        Route::post('loans',                            [LoanController::class, 'store']);
+        Route::put('loans/{loan}',                      [LoanController::class, 'update']);
+        Route::patch('loans/{loan}',                    [LoanController::class, 'update']);
     });
     Route::middleware('role:admin')->group(function () {
-        Route::post('loans',                              [LoanController::class, 'store']);
-        Route::put('loans/{loan}',                        [LoanController::class, 'update']);
-        Route::patch('loans/{loan}',                      [LoanController::class, 'update']);
-        Route::delete('loans/{loan}',                     [LoanController::class, 'destroy']);
-        Route::post('loans/{loan}/schedule/regenerate',   [LoanController::class, 'regenerateSchedule']);
+        Route::delete('loans/{loan}',                   [LoanController::class, 'destroy']);
+        Route::post('loans/{loan}/schedule/regenerate', [LoanController::class, 'regenerateSchedule']);
     });
 
     /* ── Payments ── */
@@ -73,11 +80,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('payments/collector-summary',  [PaymentController::class, 'collectorSummary']);
         Route::get('payments/{payment}',          [PaymentController::class, 'show']);
     });
-    Route::middleware('role:admin,accounting_clerk,collector')->group(function () {
-        Route::post('payments',              [PaymentController::class, 'store']);
-        Route::patch('payments/{payment}',   [PaymentController::class, 'update']);
-        Route::delete('payments/{payment}',  [PaymentController::class, 'destroy']);
-        Route::post('payments/upload',       [PaymentController::class, 'uploadCsv']);
+    Route::middleware('role:admin,accounting_clerk')->group(function () {
+        Route::post('payments',             [PaymentController::class, 'store']);
+        Route::patch('payments/{payment}',  [PaymentController::class, 'update']);
+        Route::delete('payments/{payment}', [PaymentController::class, 'destroy']);
+        Route::post('payments/upload',      [PaymentController::class, 'uploadCsv']);
     });
 
     /* ── Users ── */

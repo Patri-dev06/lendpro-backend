@@ -31,7 +31,6 @@ class PaymentController extends Controller
     {
         $data = $request->validate([
             'loan_id'      => 'required|exists:loans,id',
-            'collector_id' => 'required|exists:collectors,id',
             'payment_date' => 'required|date',
             'amount'       => 'required|numeric|min:0.01',
             'remarks'      => 'nullable|string',
@@ -46,7 +45,6 @@ class PaymentController extends Controller
             $payment = Payment::create([
                 'loan_id'          => $loan->id,
                 'client_id'        => $loan->client_id,
-                'collector_id'     => $data['collector_id'],
                 'recorded_by'      => auth()->id(),
                 'payment_date'     => $data['payment_date'],
                 'amount'           => $data['amount'],
@@ -150,9 +148,50 @@ class PaymentController extends Controller
 
     public function update(Request $request, Payment $payment): JsonResponse
     {
-        $data = $request->validate(['remarks' => 'nullable|string']);
-        $payment->update($data);
-        return response()->json($payment);
+        $data = $request->validate([
+            'amount'       => 'sometimes|numeric|min:0.01',
+            'payment_date' => 'sometimes|date',
+            'remarks'      => 'nullable|string',
+        ]);
+
+        DB::transaction(function () use ($data, $payment) {
+            if (isset($data['amount']) && (float) $data['amount'] !== (float) $payment->amount) {
+                $loan    = Loan::findOrFail($payment->loan_id);
+                $oldAmt  = (float) $payment->amount;
+                $newAmt  = (float) $data['amount'];
+                $diff    = $newAmt - $oldAmt;
+
+                $newLoanBalance    = max(0, $loan->current_balance - $diff);
+                $newPaymentBalance = max(0, $payment->previous_balance - $newAmt);
+
+                $loan->update([
+                    'current_balance' => $newLoanBalance,
+                    'status'          => $newLoanBalance <= 0 ? 'paid' : $loan->status,
+                ]);
+
+                $payment->update([
+                    'amount'      => $newAmt,
+                    'new_balance' => $newPaymentBalance,
+                ]);
+
+                AuditLog::record(
+                    'UPDATE_PAYMENT',
+                    $loan->number,
+                    "Payment #{$payment->id} amount edited: ₱{$oldAmt} → ₱{$newAmt}"
+                );
+            }
+
+            $updateFields = array_filter([
+                'payment_date' => $data['payment_date'] ?? null,
+                'remarks'      => $data['remarks'] ?? $payment->remarks,
+            ], fn ($v) => $v !== null);
+
+            if ($updateFields) {
+                $payment->update($updateFields);
+            }
+        });
+
+        return response()->json($payment->fresh(['client', 'recordedBy']));
     }
 
     public function destroy(Payment $payment): JsonResponse
