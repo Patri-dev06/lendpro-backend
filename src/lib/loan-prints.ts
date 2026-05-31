@@ -1,16 +1,11 @@
-import { formatPHP, formatDate } from "@/lib/format";
+﻿import { formatPHP, formatDate } from "@/lib/format";
 import { LOAN_TYPE_LABELS } from "@/lib/loan-constants";
 
-/* Minimal shapes needed for printing — matches API snake_case */
 export interface PrintClient {
   name: string;
   store_name: string;
   address: string;
   phone: string;
-}
-
-export interface PrintCollector {
-  name: string;
 }
 
 export interface PrintLoan {
@@ -26,12 +21,33 @@ export interface PrintLoan {
   release_date: string;
   due_date: string;
   client: PrintClient;
-  collector: PrintCollector;
 }
+
+const COMMON_STYLES = `
+  body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:32px;color:#111}
+  .div{border-top:2px solid #000;margin:10px 0}
+  .sigs{display:flex;gap:40px;margin-top:48px}
+  .sig{flex:1;text-align:center;font-size:9px}
+  .sig-line{border-top:1px solid #000;margin-bottom:4px}
+  .sig-name{font-weight:bold;font-size:10px}
+  .sig-role{color:#555}
+  @media print{body{padding:20px}}
+`;
+
+function sigBlock(name: string, role: string): string {
+  return `<div class="sig">
+    <br/><br/><br/>
+    <div class="sig-line"></div>
+    <div class="sig-name">${name}</div>
+    <div class="sig-role">${role}</div>
+    <div style="margin-top:6px">Date: _______________</div>
+  </div>`;
+}
+
+/* ── TILA ─────────────────────────────────────────────────────────────── */
 
 interface PrintTILAParams {
   client: PrintClient;
-  collector: PrintCollector;
   loanType: string;
   date: string;
   principal: number;
@@ -47,27 +63,22 @@ interface PrintTILAParams {
 export function printTILA(p: PrintTILAParams) {
   const win = window.open("", "_blank");
   if (!win) return;
-  const loanNum = `LN-${new Date().getFullYear()}-DRAFT`;
+  const loanNum     = `LN-${new Date().getFullYear()}-DRAFT`;
+  const amtRelease  = p.principal - p.sc;
+
   win.document.write(`<!DOCTYPE html><html><head><title>Truth in Lending Disclosure</title>
 <style>
-  body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:32px;color:#111}
+  ${COMMON_STYLES}
   h1{font-size:16px;text-align:center;margin:0 0 2px}
   .co{text-align:center;font-size:13px;font-weight:bold;margin-bottom:4px}
   .sub{text-align:center;font-size:10px;color:#666;margin-bottom:16px}
-  .div{border-top:2px solid #000;margin:10px 0}
   .sec{margin-bottom:14px}
   .sec-title{font-weight:bold;font-size:10px;text-transform:uppercase;letter-spacing:.5px;background:#f0f0f0;padding:4px 8px;margin-bottom:6px}
   .row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dotted #ddd}
   .lbl{color:#555}.val{font-weight:bold}
   .total{display:flex;justify-content:space-between;font-weight:bold;font-size:13px;padding:6px 0;border-top:2px solid #333;margin-top:4px}
-  .sigs{display:flex;gap:40px;margin-top:48px}
-  .sig{flex:1;text-align:center;font-size:9px}
-  .sig-line{border-top:1px solid #000;margin-bottom:4px}
-  .sig-name{font-weight:bold;font-size:10px}
-  .sig-role{color:#555}
   .footer{font-size:9px;color:#888;margin-top:20px;text-align:center;border-top:1px solid #ddd;padding-top:8px}
   p{line-height:1.6;margin:0}
-  @media print{body{padding:20px}}
 </style></head><body>
 <div class="co">BuenaMano Lending Corporation</div>
 <h1>TRUTH IN LENDING DISCLOSURE STATEMENT</h1>
@@ -85,46 +96,34 @@ export function printTILA(p: PrintTILAParams) {
 <div class="sec">
   <div class="sec-title">Finance Details</div>
   <div class="row"><span class="lbl">Principal Amount</span><span class="val">${formatPHP(p.principal)}</span></div>
+  <div class="row"><span class="lbl">Processing Fee (deducted from release)</span><span class="val">− ${formatPHP(p.sc)}</span></div>
+  <div class="row"><span class="lbl">Net</span><span class="val">${formatPHP(amtRelease)}</span></div>
   <div class="row"><span class="lbl">Interest</span><span class="val">${formatPHP(p.interest)}</span></div>
-  <div class="row"><span class="lbl">Total Loan Amount (Principal + Interest)</span><span class="val">${formatPHP(p.totalLoanAmount)}</span></div>
-  <div class="row"><span class="lbl">Processing Fee</span><span class="val">${formatPHP(p.sc)}</span></div>
-  <div class="total"><span>Total Amount to be Paid (Starting Balance)</span><span>${formatPHP(p.totalReceivable)}</span></div>
+  <div class="total"><span>Net (Total Amount to be Paid)</span><span>${formatPHP(p.totalReceivable)}</span></div>
 </div>
 <div class="sec">
   <div class="sec-title">Repayment Schedule</div>
   <div class="row"><span class="lbl">Daily Payment</span><span class="val">${formatPHP(p.daily)}</span></div>
-  <div class="row"><span class="lbl">Term of Loan</span><span class="val">${p.termDays} days (Sundays excluded)</span></div>
+  <div class="row"><span class="lbl">Term of Loan</span><span class="val">${p.termDays} days</span></div>
   <div class="row"><span class="lbl">Due Date</span><span class="val">${p.dueDate ? formatDate(p.dueDate) : "—"}</span></div>
-  <div class="row"><span class="lbl">Assigned Collector</span><span class="val">${p.collector.name}</span></div>
 </div>
 <div class="sec">
   <div class="sec-title">Declaration</div>
   <p>I/We have read, understood, and agree to the terms and conditions of this loan as stated above. I/We acknowledge receipt of this Truth in Lending Disclosure Statement prior to the consummation of this credit transaction, in accordance with the provisions of Republic Act No. 3765.</p>
 </div>
 <div class="sigs">
-  <div class="sig">
-    <br/><br/><br/>
-    <div class="sig-line"></div>
-    <div class="sig-name">${p.client.name}</div>
-    <div class="sig-role">Signature of Borrower</div>
-    <div style="margin-top:6px">Date: _______________</div>
-  </div>
-  <div class="sig">
-    <br/><br/><br/>
-    <div class="sig-line"></div>
-    <div class="sig-name">${p.collector.name}</div>
-    <div class="sig-role">Loan Agent / Authorized Representative</div>
-    <div style="margin-top:6px">Date: _______________</div>
-  </div>
+  ${sigBlock(p.client.name, "Signature of Borrower")}
+  ${sigBlock("___________________________", "Manager / Authorized Representative")}
 </div>
 <div class="footer">This disclosure is issued in compliance with Republic Act No. 3765 (Truth in Lending Act) and its implementing rules and regulations.</div>
 </body></html>`);
   win.document.close(); win.focus(); win.print();
 }
 
+/* ── Invoice ──────────────────────────────────────────────────────────── */
+
 interface PrintInvoiceParams {
   client: PrintClient;
-  collector: PrintCollector;
   loanType: string;
   date: string;
   principal: number;
@@ -140,35 +139,32 @@ interface PrintInvoiceParams {
 export function printInvoice(p: PrintInvoiceParams) {
   const win = window.open("", "_blank");
   if (!win) return;
-  const loanNum = `LN-${new Date().getFullYear()}-DRAFT`;
+  const loanNum    = `LN-${new Date().getFullYear()}-DRAFT`;
+  const amtRelease = p.principal - p.sc;
+
   win.document.write(`<!DOCTYPE html><html><head><title>Loan Invoice</title>
 <style>
-  body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:32px;color:#111}
+  ${COMMON_STYLES}
   .hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px}
   .co-name{font-size:18px;font-weight:bold}.co-sub{font-size:10px;color:#888}
   .inv-lbl{font-size:22px;font-weight:bold;color:#2563eb;text-align:right}
   .inv-num{font-size:11px;color:#555;text-align:right}
-  .div{border-top:2px solid #2563eb;margin:12px 0}
+  .div2{border-top:2px solid #2563eb;margin:12px 0}
   .bill-lbl{font-size:9px;text-transform:uppercase;color:#888;letter-spacing:1px}
   .bill-name{font-size:14px;font-weight:bold;margin-top:2px}
   table{width:100%;border-collapse:collapse;margin-top:14px}
   th{background:#eff6ff;font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:8px 10px;border:1px solid #d1d5db;text-align:left}
   td{padding:8px 10px;border:1px solid #e5e7eb}
   .right{text-align:right}
-  .total-row td{font-weight:bold;background:#eff6ff;border-top:2px solid #2563eb;font-size:13px}
+  .subtotal-row td{background:#f8faff;font-style:italic}
+  .net-row td{font-weight:bold;background:#eff6ff;border-top:2px solid #2563eb;font-size:13px}
   .footer{margin-top:24px;font-size:9px;color:#999;border-top:1px solid #e5e7eb;padding-top:8px}
-  .sigs{display:flex;gap:40px;margin-top:48px}
-  .sig{flex:1;text-align:center;font-size:9px}
-  .sig-line{border-top:1px solid #000;margin-bottom:4px}
-  .sig-name{font-weight:bold;font-size:10px}
-  .sig-role{color:#555}
-  @media print{body{padding:20px}}
 </style></head><body>
 <div class="hdr">
   <div><div class="co-name">BuenaMano Lending Corporation</div><div class="co-sub">Loan &amp; Collection Services</div></div>
   <div><div class="inv-lbl">INVOICE</div><div class="inv-num">No. ${loanNum}</div><div class="inv-num">Date: ${p.date}</div></div>
 </div>
-<div class="div"></div>
+<div class="div2"></div>
 <div style="margin-bottom:16px">
   <div class="bill-lbl">Bill to</div>
   <div class="bill-name">${p.client.name}</div>
@@ -181,38 +177,28 @@ export function printInvoice(p: PrintInvoiceParams) {
   <thead><tr><th>Description</th><th class="right">Amount</th></tr></thead>
   <tbody>
     <tr><td>Principal loan disbursement</td><td class="right">${formatPHP(p.principal)}</td></tr>
+    <tr><td>Processing fee (deducted from release)</td><td class="right">− ${formatPHP(p.sc)}</td></tr>
+    <tr class="subtotal-row"><td>Net</td><td class="right">${formatPHP(amtRelease)}</td></tr>
     <tr><td>Interest</td><td class="right">${formatPHP(p.interest)}</td></tr>
-    <tr><td>Processing fee</td><td class="right">${formatPHP(p.sc)}</td></tr>
-    <tr class="total-row"><td>Starting Balance (Total Payable)</td><td class="right">${formatPHP(p.totalReceivable)}</td></tr>
+    <tr class="net-row"><td>Total Payable</td><td class="right">${formatPHP(p.totalReceivable)}</td></tr>
   </tbody>
 </table>
 <div class="footer">
-  <p>Thank you for your business. Daily payment of ${formatPHP(p.daily)} for ${p.termDays} days (Sundays excluded). Due date: ${p.dueDate ? formatDate(p.dueDate) : "—"}.</p>
+  <p>Daily payment of ${formatPHP(p.daily)} for ${p.termDays} days. Due date: ${p.dueDate ? formatDate(p.dueDate) : "—"}.</p>
   ${p.remarks ? `<p>Remarks: ${p.remarks}</p>` : ""}
 </div>
 <div class="sigs">
-  <div class="sig">
-    <br/><br/><br/>
-    <div class="sig-line"></div>
-    <div class="sig-name">${p.client.name}</div>
-    <div class="sig-role">Signature of Borrower</div>
-    <div style="margin-top:6px">Date: _______________</div>
-  </div>
-  <div class="sig">
-    <br/><br/><br/>
-    <div class="sig-line"></div>
-    <div class="sig-name">${p.collector.name}</div>
-    <div class="sig-role">Loan Agent / Authorized Representative</div>
-    <div style="margin-top:6px">Date: _______________</div>
-  </div>
+  ${sigBlock(p.client.name, "Signature of Borrower")}
+  ${sigBlock("___________________________", "Manager / Authorized Representative")}
 </div>
 </body></html>`);
   win.document.close(); win.focus(); win.print();
 }
 
+/* ── Loan Agreement / Promissory Note ────────────────────────────────── */
+
 interface PrintLoanFormParams {
   client: PrintClient;
-  collector: PrintCollector;
   loanType: string;
   date: string;
   principal: number;
@@ -229,10 +215,12 @@ interface PrintLoanFormParams {
 export function printLoanForm(p: PrintLoanFormParams) {
   const win = window.open("", "_blank");
   if (!win) return;
-  const loanNum = `LN-${new Date().getFullYear()}-DRAFT`;
+  const loanNum    = `LN-${new Date().getFullYear()}-DRAFT`;
+  const amtRelease = p.principal - p.sc;
+
   win.document.write(`<!DOCTYPE html><html><head><title>Loan Agreement Form</title>
 <style>
-  body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:32px;color:#111}
+  ${COMMON_STYLES}
   h1{font-size:16px;text-align:center;margin:0 0 2px}
   .sub{text-align:center;font-size:10px;color:#666;margin-bottom:14px}
   .div2{border-top:2px solid #000;margin:10px 0}
@@ -244,14 +232,9 @@ export function printLoanForm(p: PrintLoanFormParams) {
   .amt-table{width:100%;border-collapse:collapse}
   .amt-table td{padding:5px 8px;border:1px solid #ddd}
   .amt-table .lbl{color:#555}.amt-table .val{font-weight:bold;text-align:right}
+  .amt-table .sub{font-style:italic;background:#fafafa}
   .amt-table .tot{font-weight:bold;font-size:12px;background:#f8f8f8}
   .terms{font-size:9px;line-height:1.6;color:#555;border:1px solid #ddd;padding:8px;border-radius:4px;margin-top:8px}
-  .sigs{display:flex;gap:24px;margin-top:44px}
-  .sig{flex:1;text-align:center;font-size:9px}
-  .sig-line{border-top:1px solid #000;margin-bottom:4px}
-  .sig-name{font-weight:bold;font-size:10px}
-  .sig-role{color:#555}
-  @media print{body{padding:20px}}
 </style></head><body>
 <h1>LOAN AGREEMENT &amp; PROMISSORY NOTE</h1>
 <div class="sub">BuenaMano Lending Corporation</div>
@@ -275,55 +258,38 @@ export function printLoanForm(p: PrintLoanFormParams) {
 <div class="sec-title">Loan Amount Summary</div>
 <table class="amt-table">
   <tr><td class="lbl">Principal</td><td class="val">${formatPHP(p.principal)}</td></tr>
+  <tr><td class="lbl">Processing Fee (deducted from release)</td><td class="val">− ${formatPHP(p.sc)}</td></tr>
+  <tr class="sub"><td>Net</td><td class="val">${formatPHP(amtRelease)}</td></tr>
   <tr><td class="lbl">Interest</td><td class="val">${formatPHP(p.interest)}</td></tr>
-  <tr class="tot"><td>Total Loan Amount (Principal + Interest)</td><td class="val">${formatPHP(p.totalLoanAmount)}</td></tr>
-  <tr><td class="lbl">Processing Fee</td><td class="val">${formatPHP(p.sc)}</td></tr>
-  <tr class="tot"><td>Starting Balance (Total Payable)</td><td class="val">${formatPHP(p.totalReceivable)}</td></tr>
+  <tr class="tot"><td>Total Payable</td><td class="val">${formatPHP(p.totalReceivable)}</td></tr>
 </table>
 <div class="sec-title">Payment Terms</div>
 <div class="frow">
   <div class="field"><div class="flbl">Daily Payment</div><div class="fval">${formatPHP(p.daily)}</div></div>
-  <div class="field"><div class="flbl">Term of Loan</div><div class="fval">${p.termDays} days (Sundays excluded)</div></div>
-  <div class="field"><div class="flbl">Assigned Collector</div><div class="fval">${p.collector.name}</div></div>
+  <div class="field"><div class="flbl">Term of Loan</div><div class="fval">${p.termDays} days</div></div>
 </div>
 ${p.remarks ? `<div class="frow"><div class="field"><div class="flbl">Remarks</div><div class="fval">${p.remarks}</div></div></div>` : ""}
 <div class="terms">
-  <strong>Terms &amp; Conditions:</strong> The borrower agrees to pay the daily payment amount on all non-Sunday days until the full balance is settled. Late payments are subject to penalty charges as agreed upon. The borrower acknowledges receipt of the full principal amount stated above. This document constitutes a promissory note and is legally binding upon signing.
+  <strong>Terms &amp; Conditions:</strong> The borrower agrees to pay the daily payment amount every day until the full balance is settled. Late payments beyond 6 days are subject to a monthly compound penalty of 8% (5% interest + 3% penalty fee) on the outstanding balance. The borrower acknowledges receipt of the amount to release stated above. This document constitutes a promissory note and is legally binding upon signing.
 </div>
 <div class="sigs">
-  <div class="sig">
-    <br/><br/><br/>
-    <div class="sig-line"></div>
-    <div class="sig-name">${p.client.name}</div>
-    <div class="sig-role">Signature of Borrower</div>
-    <div style="margin-top:6px">Date: _______________</div>
-  </div>
-  <div class="sig">
-    <br/><br/><br/>
-    <div class="sig-line"></div>
-    <div class="sig-name">___________________________</div>
-    <div class="sig-role">Co-Borrower / Guarantor (if any)</div>
-    <div style="margin-top:6px">Date: _______________</div>
-  </div>
-  <div class="sig">
-    <br/><br/><br/>
-    <div class="sig-line"></div>
-    <div class="sig-name">${p.collector.name}</div>
-    <div class="sig-role">Loan Agent / Authorized Representative</div>
-    <div style="margin-top:6px">Date: _______________</div>
-  </div>
+  ${sigBlock(p.client.name, "Signature of Borrower")}
+  ${sigBlock("___________________________", "Co-Borrower / Guarantor (if any)")}
+  ${sigBlock("___________________________", "Manager / Authorized Representative")}
 </div>
 </body></html>`);
   win.document.close(); win.focus(); win.print();
 }
 
+/* ── Client Ledger ───────────────────────────────────────────────────── */
+
 export function printLedger(loan: PrintLoan) {
   const win = window.open("", "_blank");
   if (!win) return;
-  const { client, collector } = loan;
+  const { client } = loan;
   win.document.write(`<!DOCTYPE html><html><head><title>Client Ledger</title>
 <style>
-  body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:32px;color:#111}
+  ${COMMON_STYLES}
   h2{font-size:16px;margin:0 0 2px}.co{font-size:13px;font-weight:bold;margin-bottom:4px}
   .div2{border-top:2px solid #000;margin:10px 0}.div1{border-top:1px solid #ccc;margin:8px 0}
   .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin-bottom:12px}
@@ -333,7 +299,6 @@ export function printLedger(loan: PrintLoan) {
   td{padding:5px 8px;border:1px solid #e0e0e0}
   .right{text-align:right}.paid{color:#16a34a}.missed{color:#dc2626}
   .total-row td{font-weight:bold;background:#f8f8f8;border-top:2px solid #aaa}
-  @media print{body{padding:20px}}
 </style></head><body>
 <div class="co">BuenaMano Lending Corporation</div>
 <h2>Client Ledger</h2>
@@ -348,13 +313,12 @@ export function printLedger(loan: PrintLoan) {
   <div class="info-row"><span class="info-lbl">Phone</span><span class="info-val">${client.phone}</span></div>
   <div class="info-row"><span class="info-lbl">Due Date</span><span class="info-val">${loan.due_date}</span></div>
   <div class="info-row"><span class="info-lbl">Principal</span><span class="info-val">${formatPHP(loan.principal)}</span></div>
+  <div class="info-row"><span class="info-lbl">Processing Fee (−)</span><span class="info-val">${formatPHP(loan.service_charge)}</span></div>
+  <div class="info-row"><span class="info-lbl">Net</span><span class="info-val">${formatPHP(loan.principal - loan.service_charge)}</span></div>
   <div class="info-row"><span class="info-lbl">Interest</span><span class="info-val">${formatPHP(loan.interest)}</span></div>
-  <div class="info-row"><span class="info-lbl">Total Loan Amount</span><span class="info-val">${formatPHP(loan.principal + loan.interest)}</span></div>
-  <div class="info-row"><span class="info-lbl">Processing Fee</span><span class="info-val">${formatPHP(loan.service_charge)}</span></div>
-  <div class="info-row"><span class="info-lbl">Starting Balance</span><span class="info-val">${formatPHP(loan.total_receivable)}</span></div>
+  <div class="info-row"><span class="info-lbl">Total Payable</span><span class="info-val">${formatPHP(loan.total_receivable)}</span></div>
   <div class="info-row"><span class="info-lbl">Daily Payment</span><span class="info-val">${formatPHP(loan.daily_payment)}</span></div>
   <div class="info-row"><span class="info-lbl">Term of Loan</span><span class="info-val">${loan.term_days} days</span></div>
-  <div class="info-row"><span class="info-lbl">Collector</span><span class="info-val">${collector.name}</span></div>
 </div>
 <div class="div1"></div>
 <table>
@@ -364,8 +328,8 @@ export function printLedger(loan: PrintLoan) {
   <tbody>
     ${Array.from({ length: loan.term_days }, (_, i) => {
       const paidDays = Math.round((loan.total_receivable - loan.current_balance) / loan.daily_payment);
-      const isPaid = i < paidDays;
-      const bal = Math.max(0, loan.total_receivable - (Math.min(i + 1, paidDays) * loan.daily_payment));
+      const isPaid   = i < paidDays;
+      const bal      = Math.max(0, loan.total_receivable - (Math.min(i + 1, paidDays) * loan.daily_payment));
       return `<tr>
         <td>${i + 1}</td><td></td>
         <td class="right">${formatPHP(loan.daily_payment)}</td>
@@ -385,4 +349,333 @@ export function printLedger(loan: PrintLoan) {
 <div style="margin-top:20px;font-size:9px;color:#888">Printed: ${new Date().toLocaleDateString("en-PH")} — BuenaMano Lending Corporation</div>
 </body></html>`);
   win.document.close(); win.focus(); win.print();
+}
+
+/* ── Daily Collection Sheet ──────────────────────────────────────────── */
+
+export interface CollectionLoan {
+  number: string;
+  client: { name: string; store_name: string };
+  daily_payment: number;
+  current_balance: number;
+  status: string;
+  collector?: { id: number; name: string; area: string } | null;
+}
+
+interface CollectorGroup {
+  id: number;
+  name: string;
+  area: string;
+  active: CollectionLoan[];
+  pastDue: CollectionLoan[];
+}
+
+export function printCollectionSheet(
+  loans: CollectionLoan[],
+  companyName: string,
+  companyAddress: string,
+) {
+  const win = window.open("", "_blank");
+  if (!win) return;
+
+  const today = new Date().toLocaleDateString("en-PH", {
+    year: "numeric", month: "long", day: "numeric",
+  });
+
+  // Group loans by collector
+  const groupMap = new Map<number, CollectorGroup>();
+  const noCollector: CollectorGroup = { id: 0, name: "Unassigned", area: "—", active: [], pastDue: [] };
+
+  for (const loan of loans) {
+    if (!loan.collector) {
+      if (["overdue","past-due"].includes(loan.status)) noCollector.pastDue.push(loan);
+      else noCollector.active.push(loan);
+      continue;
+    }
+    const cid = loan.collector.id;
+    if (!groupMap.has(cid)) {
+      groupMap.set(cid, { id: cid, name: loan.collector.name, area: loan.collector.area, active: [], pastDue: [] });
+    }
+    const g = groupMap.get(cid)!;
+    if (["overdue","past-due"].includes(loan.status)) g.pastDue.push(loan);
+    else g.active.push(loan);
+  }
+
+  const groups = [...groupMap.values()];
+  if (noCollector.active.length || noCollector.pastDue.length) groups.push(noCollector);
+
+  function tableRows(list: CollectionLoan[]): string {
+    const minRows = Math.max(list.length, 20);
+    return Array.from({ length: minRows }, (_, i) => {
+      const loan = list[i];
+      return `<tr>
+        <td class="c num" style="width:26px">${i + 1}</td>
+        <td>${loan ? `<span class="client-name">${loan.client.name}</span><br/><span class="store">${loan.client.store_name}</span>` : ""}</td>
+        <td class="c num" style="width:70px">${loan ? formatPHP(loan.daily_payment) : ""}</td>
+        <td class="c" style="width:54px"></td>
+        <td class="c" style="width:64px"></td>
+        <td style="width:80px"></td>
+      </tr>`;
+    }).join("");
+  }
+
+  function collectorPage(g: CollectorGroup, isLast: boolean, isFirst: boolean): string {
+    const breakBefore = isFirst ? "" : "page-break-before:always;break-before:page;";
+    const breakAfter  = isLast  ? "" : "page-break-after:always;break-after:page";
+    return `
+<div style="${breakBefore}${breakAfter}">
+  <div class="hdr">
+    <div class="co">${companyName || "BuenaMano Lending Corporation"}</div>
+    <div class="addr">${companyAddress || ""}</div>
+  </div>
+
+  <div class="meta">
+    <div class="meta-field" style="flex:1"><span>AREA:</span><div class="line">${g.area}</div></div>
+    <div class="meta-field" style="flex:1.5"><span>NAME OF COLLECTOR:</span><div class="line">${g.name}</div></div>
+    <div class="meta-field"><span>DATE:</span><div class="line" style="min-width:100px">${today}</div></div>
+  </div>
+
+  <div class="summary">
+    <div class="sum-col">
+      <div class="sum-row"><span class="lbl">Daily Collection:</span><div class="val"></div></div>
+      <div class="sum-row"><span class="lbl">Past Due Collection:</span><div class="val"></div></div>
+      <div class="sum-row"><span class="lbl">Total Collection:</span><div class="val"></div></div>
+    </div>
+    <div class="sum-col">
+      <div class="sum-row"><span class="lbl">Cash:</span><div class="val"></div></div>
+      <div class="sum-row"><span class="lbl">Check:</span><div class="val"></div></div>
+      <div class="sum-row"><span class="lbl">Total:</span><div class="val"></div></div>
+    </div>
+    <div class="sum-col">
+      <div class="sum-row"><span class="lbl">Total Collection:</span><div class="val"></div></div>
+      <div class="sum-row"><span class="lbl">Total Release:</span><div class="val"></div></div>
+      <div class="sum-row"><span class="lbl">BB:</span><div class="val"></div></div>
+    </div>
+  </div>
+
+  <div class="section-title">Active Clients (${g.active.length})</div>
+  <table>
+    <thead>
+      <tr>
+        <th>No.</th>
+        <th style="text-align:left">Client / Business</th>
+        <th>Daily Collection</th>
+        <th>Amount Paid</th>
+        <th>Amount Unpaid</th>
+        <th>Remarks</th>
+      </tr>
+    </thead>
+    <tbody>${tableRows(g.active)}</tbody>
+  </table>
+  <div class="total-bar"><span>Total Active Collection: P ___________________</span></div>
+
+  <div class="section-title" style="margin-top:10px">Past Due / Overdue Clients (${g.pastDue.length})</div>
+  <table>
+    <thead>
+      <tr>
+        <th>No.</th>
+        <th style="text-align:left">Client / Business</th>
+        <th>Daily Collection</th>
+        <th>Amount Paid</th>
+        <th>Amount Unpaid</th>
+        <th>Remarks</th>
+      </tr>
+    </thead>
+    <tbody>${tableRows(g.pastDue)}</tbody>
+  </table>
+  <div class="total-bar"><span>Total Past Due Collection: P ___________________</span></div>
+
+  <div class="total-bar" style="margin-top:4px;font-size:10px">
+    <span>TOTAL DAILY COLLECTION: P ___________________</span>
+  </div>
+  <div class="cert">I hereby certify that the above data are true and correct.</div>
+
+  <div class="sig-row">
+    <div class="sig">
+      <div style="height:32px"></div>
+      <div class="sig-line"></div>
+      <div>Signature of Collector</div>
+      <div style="margin-top:4px">Date: _______________</div>
+    </div>
+    <div class="sig">
+      <div style="height:32px"></div>
+      <div class="sig-line"></div>
+      <div>Verified by (Manager / Authorized)</div>
+      <div style="margin-top:4px">Date: _______________</div>
+    </div>
+  </div>
+
+  <div class="breakdown">
+    <div class="breakdown-title">BREAKDOWN</div>
+    <table class="breakdown-table">
+      <thead><tr><th colspan="3">Check</th></tr></thead>
+      <tbody><tr><td colspan="3" style="height:18px"></td></tr></tbody>
+      <thead><tr><th colspan="3">Cash</th></tr></thead>
+      <tbody>
+        <tr><td class="r">1,000</td><td>×</td><td style="min-width:60px"></td></tr>
+        <tr><td class="r">500</td><td>×</td><td></td></tr>
+        <tr><td class="r">200</td><td>×</td><td></td></tr>
+        <tr><td class="r">100</td><td>×</td><td></td></tr>
+        <tr><td class="r">50</td><td>×</td><td></td></tr>
+        <tr><td class="r">20</td><td>×</td><td></td></tr>
+      </tbody>
+      <thead><tr><th colspan="3">Coins</th></tr></thead>
+      <tbody>
+        <tr><td class="r">20</td><td>×</td><td></td></tr>
+        <tr><td class="r">10</td><td>×</td><td></td></tr>
+        <tr><td class="r">5</td><td>×</td><td></td></tr>
+        <tr><td class="r">.10</td><td>×</td><td></td></tr>
+        <tr><td class="r">.25</td><td>×</td><td></td></tr>
+        <tr class="section-hdr"><td colspan="3">Others</td></tr>
+        <tr><td colspan="3" style="height:16px"></td></tr>
+        <tr class="total-hdr"><td colspan="2" style="text-align:right">Total:</td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>`;
+  }
+
+  win.document.write(`<!DOCTYPE html><html><head>
+<title>Daily Collection Sheet — ${today}</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:Arial,sans-serif;font-size:9px;margin:0;padding:16px 20px;color:#000}
+  .hdr{text-align:center;margin-bottom:8px}
+  .hdr .co{font-size:13px;font-weight:bold;text-transform:uppercase;letter-spacing:.5px}
+  .hdr .addr{font-size:8px;color:#333;margin-top:2px}
+  .meta{display:flex;gap:12px;margin-bottom:8px;font-size:9px}
+  .meta-field{display:flex;align-items:center;gap:4px}
+  .meta-field span{font-weight:bold;white-space:nowrap}
+  .meta-field .line{border-bottom:1px solid #000;flex:1;min-width:80px;padding-bottom:1px}
+  .summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid #000;margin-bottom:8px;font-size:8.5px}
+  .sum-col{border-right:1px solid #000;padding:3px 5px}
+  .sum-col:last-child{border-right:none}
+  .sum-row{display:flex;justify-content:space-between;align-items:center;padding:1px 0}
+  .sum-row .lbl{color:#444}
+  .sum-row .val{border-bottom:1px solid #000;min-width:60px;height:12px}
+  .section-title{font-size:9px;font-weight:bold;text-transform:uppercase;background:#e8e8e8;padding:3px 6px;border:1px solid #000;border-bottom:none;margin-top:8px;letter-spacing:.5px}
+  table{width:100%;border-collapse:collapse;font-size:8.5px}
+  th{background:#f0f0f0;border:1px solid #555;padding:3px 4px;text-align:center;font-size:8px;text-transform:uppercase;line-height:1.2}
+  td{border:1px solid #999;padding:2px 4px;height:16px;vertical-align:middle}
+  td.c{text-align:center}td.num{font-family:monospace}td.r{text-align:right;font-weight:bold}
+  .client-name{font-weight:600;font-size:8.5px}
+  .store{font-size:7.5px;color:#555}
+  .total-bar{display:flex;justify-content:space-between;align-items:center;border:1px solid #000;border-top:2px solid #000;padding:4px 8px;font-weight:bold;font-size:9px}
+  .cert{font-size:7.5px;color:#444;margin-top:4px;font-style:italic}
+  .sig-row{display:flex;gap:40px;margin-top:20px}
+  .sig{flex:1;text-align:center;font-size:8px}
+  .sig-line{border-top:1px solid #000;margin-bottom:3px}
+  .breakdown{margin-top:20px}
+  .breakdown-title{font-size:10px;font-weight:bold;text-align:center;text-transform:uppercase;border:1px solid #000;padding:4px;background:#f0f0f0}
+  .breakdown-table{width:220px;border-collapse:collapse;margin:0 auto}
+  .breakdown-table td,.breakdown-table th{border:1px solid #999;padding:2px 6px;font-size:8.5px}
+  .breakdown-table th{background:#f0f0f0;text-align:center;font-size:8px;text-transform:uppercase}
+  .breakdown-table .section-hdr td{background:#e8e8e8;font-weight:bold;text-align:center}
+  .breakdown-table .total-hdr td{background:#d8d8d8;font-weight:bold}
+  @media print{
+    body{padding:10px 14px}
+    @page{size:A4 portrait;margin:8mm}
+  }
+</style>
+</head><body>
+${groups.map((g, i) => collectorPage(g, i === groups.length - 1, i === 0)).join("")}
+</body></html>`);
+
+  win.document.close(); win.focus(); win.print();
+}
+
+
+/* ── Collection Sheet CSV Export ─────────────────────────────────────── */
+
+export function exportCollectionSheetCsv(
+  loans: CollectionLoan[],
+  companyName: string,
+  companyAddress: string,
+  filenameHint = "all",
+): void {
+  const today = new Date().toLocaleDateString("en-PH", {
+    year: "numeric", month: "long", day: "numeric",
+  });
+  const dateSlug = new Date().toISOString().slice(0, 10);
+  const filename = `collection-sheet-${filenameHint}-${dateSlug}.csv`;
+
+  const groupMap = new Map<number, CollectorGroup>();
+  const noCollector: CollectorGroup = { id: 0, name: "Unassigned", area: "—", active: [], pastDue: [] };
+
+  for (const loan of loans) {
+    if (!loan.collector) {
+      if (["overdue", "past-due"].includes(loan.status)) noCollector.pastDue.push(loan);
+      else noCollector.active.push(loan);
+      continue;
+    }
+    const cid = loan.collector.id;
+    if (!groupMap.has(cid)) {
+      groupMap.set(cid, { id: cid, name: loan.collector.name, area: loan.collector.area, active: [], pastDue: [] });
+    }
+    const g = groupMap.get(cid)!;
+    if (["overdue", "past-due"].includes(loan.status)) g.pastDue.push(loan);
+    else g.active.push(loan);
+  }
+
+  const groups = [...groupMap.values()];
+  if (noCollector.active.length || noCollector.pastDue.length) groups.push(noCollector);
+
+  const lines: string[] = [];
+  const esc = (v: string | number) => {
+    const s = String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const row = (...cells: (string | number)[]) => lines.push(cells.map(esc).join(","));
+  const blank = () => lines.push("");
+
+  row(companyName || "BuenaMano Lending Corporation");
+  row(companyAddress || "");
+
+  for (const g of groups) {
+    blank();
+    row("AREA:", g.area, "NAME OF COLLECTOR:", g.name, "DATE:", today);
+    blank();
+    row("SUMMARY");
+    row("Daily Collection:", "", "Cash:", "", "Total Collection:", "");
+    row("Past Due Collection:", "", "Check:", "", "Total Release:", "");
+    row("Total Collection:", "", "Total:", "", "BB:", "");
+    blank();
+
+    row(`ACTIVE CLIENTS (${g.active.length})`);
+    row("No.", "Client Name", "Business / Store", "Daily Collection", "Amount Paid", "Amount Unpaid", "Remarks");
+    const minActive = Math.max(g.active.length, 20);
+    for (let i = 0; i < minActive; i++) {
+      const loan = g.active[i];
+      row(i + 1, loan?.client.name ?? "", loan?.client.store_name ?? "", loan?.daily_payment ?? "", "", "", "");
+    }
+    row("", "", "", "Total Active Collection:", "P", "");
+    blank();
+
+    row(`PAST DUE / OVERDUE CLIENTS (${g.pastDue.length})`);
+    row("No.", "Client Name", "Business / Store", "Daily Collection", "Amount Paid", "Amount Unpaid", "Remarks");
+    const minPast = Math.max(g.pastDue.length, 10);
+    for (let i = 0; i < minPast; i++) {
+      const loan = g.pastDue[i];
+      row(i + 1, loan?.client.name ?? "", loan?.client.store_name ?? "", loan?.daily_payment ?? "", "", "", "");
+    }
+    row("", "", "", "Total Past Due Collection:", "P", "");
+    blank();
+    row("", "", "", "TOTAL DAILY COLLECTION:", "P", "");
+    blank();
+    row("I hereby certify that the above data are true and correct.");
+    blank();
+    row("Signature of Collector:", "", "", "", "Verified by (Manager / Authorized):", "");
+    row("Date:", "", "", "", "Date:", "");
+    blank();
+    blank();
+  }
+
+  const csv = lines.join("\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }

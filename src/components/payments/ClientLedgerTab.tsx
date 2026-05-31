@@ -44,7 +44,6 @@ interface LedgerResponse {
     due_date: string;
   };
   client: { name: string; store_name: string; address: string; phone: string };
-  collector: { name: string };
   schedule: LedgerRow[];
   total_paid: number;
   total_pending: number;
@@ -94,7 +93,7 @@ export function ClientLedgerTab() {
 
   function handlePrint() {
     if (!ledger) return;
-    const { loan, client, collector } = ledger;
+    const { loan, client } = ledger;
     const content = printRef.current?.innerHTML ?? "";
     const win = window.open("", "_blank");
     if (!win) return;
@@ -131,8 +130,7 @@ export function ClientLedgerTab() {
   <div class="info-row"><span class="info-lbl">Due Date</span><span class="info-val">${loan.due_date}</span></div>
   <div class="info-row"><span class="info-lbl">Starting Balance</span><span class="info-val">${formatPHP(loan.total_receivable)}</span></div>
   <div class="info-row"><span class="info-lbl">Daily Payment</span><span class="info-val">${formatPHP(loan.daily_payment)}</span></div>
-  <div class="info-row"><span class="info-lbl">Term of Loan</span><span class="info-val">${loan.term_days} collection days</span></div>
-  <div class="info-row"><span class="info-lbl">Collector</span><span class="info-val">${collector.name}</span></div>
+  <div class="info-row"><span class="info-lbl">Term of Loan</span><span class="info-val">${loan.term_days} days</span></div>
 </div>
 ${content}
 <div class="sig-block">
@@ -146,8 +144,8 @@ ${content}
   <div class="sig">
     <br/><br/>
     <div class="sig-line"></div>
-    <div class="sig-name">${ledger.collector.name}</div>
-    <div class="sig-role">Loan Agent / Verified by</div>
+    <div class="sig-name">___________________________</div>
+    <div class="sig-role">Manager / Verified by</div>
     <div style="margin-top:4px">Date: _______________</div>
   </div>
 </div>
@@ -195,9 +193,9 @@ ${content}
             <InfoItem label="Loan #"            value={ledger.loan.number} />
             <InfoItem label="Release date"      value={formatDate(ledger.loan.release_date)} />
             <InfoItem label="Due date"          value={formatDate(ledger.loan.due_date)} />
-            <InfoItem label="Starting balance"  value={formatPHP(ledger.loan.total_receivable)} />
-            <InfoItem label="Daily payment"     value={formatPHP(ledger.loan.daily_payment)} />
-            <InfoItem label="Term of loan"      value={`${ledger.loan.term_days} collection days`} />
+            <InfoItem label="Total Payable" value={formatPHP(ledger.loan.total_receivable)} />
+            <InfoItem label="Daily payment"      value={formatPHP(ledger.loan.daily_payment)} />
+            <InfoItem label="Term of loan"       value={`${ledger.loan.term_days} days`} />
             <InfoItem label="Remaining balance" value={formatPHP(ledger.loan.current_balance)} highlight />
           </div>
 

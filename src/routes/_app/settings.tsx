@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Plus, X, Loader2, CalendarOff } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getTermInterestRate, getTermMultiplier } from "@/lib/loan-calc";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { PermissionGuard } from "@/components/shared/AccessRestricted";
 import { Button } from "@/components/ui/button";
@@ -30,11 +32,12 @@ function SettingsPage() {
   const [companyPhone, setCompanyPhone]   = useState("");
   const [companyEmail, setCompanyEmail]   = useState("");
 
+  const TERM_OPTIONS = [26, 39, 52] as const;
+
   // Loan defaults
-  const [interestRate, setInterestRate]     = useState("");
-  const [serviceCharge, setServiceCharge]   = useState("");
-  const [termOptions, setTermOptions]       = useState<number[]>([30, 45, 60]);
-  const [newTerm, setNewTerm]               = useState("");
+  const [interestRate, setInterestRate]       = useState("");
+  const [serviceCharge, setServiceCharge]     = useState("");
+  const [defaultLoanTerm, setDefaultLoanTerm] = useState(52);
 
   const [holidays, setHolidays] = useState<{ date: string; name: string }[]>([]);
   const [newHolidayDate, setNewHolidayDate] = useState("");
@@ -54,12 +57,8 @@ function SettingsPage() {
       setCompanyEmail(map.company_email  ?? "");
       setInterestRate(map.default_interest_rate  ?? "20");
       setServiceCharge(map.default_service_charge ?? "0");
-      try {
-        const parsed = JSON.parse(map.loan_term_options ?? "[30,45,60]");
-        if (Array.isArray(parsed)) setTermOptions(parsed.map(Number).filter(Boolean).sort((a, b) => a - b));
-      } catch {
-        setTermOptions([30, 45, 60]);
-      }
+      const storedTerm = parseInt(map.default_loan_term ?? "52", 10);
+      setDefaultLoanTerm([26, 39, 52].includes(storedTerm) ? storedTerm : 52);
       try {
         const parsed = JSON.parse(map.holidays ?? "[]");
         if (Array.isArray(parsed)) setHolidays(parsed.filter((h: unknown) => h && typeof h === "object").sort((a: { date: string }, b: { date: string }) => a.date.localeCompare(b.date)));
@@ -116,10 +115,6 @@ function SettingsPage() {
       toast.error("Processing fee rate must be between 0 and 100%.");
       return;
     }
-    if (termOptions.length === 0) {
-      toast.error("At least one loan term option is required.");
-      return;
-    }
     setSaving(true);
     try {
       await apiRequest("PATCH", "settings", {
@@ -130,10 +125,10 @@ function SettingsPage() {
             { key: "company_address",          value: companyAddress },
             { key: "company_phone",            value: companyPhone },
             { key: "company_email",            value: companyEmail },
-            { key: "default_interest_rate",    value: String(irNum) },
-            { key: "default_service_charge",   value: String(scNum) },
-            { key: "loan_term_options",        value: JSON.stringify(termOptions) },
-            { key: "holidays",                 value: JSON.stringify(holidays) },
+            { key: "default_interest_rate",  value: String(irNum) },
+            { key: "default_service_charge", value: String(scNum) },
+            { key: "default_loan_term",      value: String(defaultLoanTerm) },
+            { key: "holidays",               value: JSON.stringify(holidays) },
           ],
         },
       });
@@ -226,44 +221,29 @@ function SettingsPage() {
           </Field>
 
           <div className="space-y-2">
-            <Label className="text-xs">Available loan term options (collection days)</Label>
-            <div className="flex flex-wrap gap-2">
-              {termOptions.map((t) => (
-                <span
-                  key={t}
-                  className="flex items-center gap-1 rounded-full border bg-secondary/60 px-3 py-1 text-xs font-medium"
-                >
-                  {t} days
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => removeTerm(t)}
-                      className="ml-0.5 rounded-full hover:text-destructive"
-                      title="Remove"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </span>
-              ))}
-            </div>
-            {canEdit && (
-              <div className="flex gap-2 pt-1">
-                <Input
-                  type="number" min={1} max={365}
-                  value={newTerm}
-                  onChange={(e) => setNewTerm(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTerm(); } }}
-                  placeholder="e.g. 75"
-                  className="h-8 w-28 text-sm"
-                />
-                <Button type="button" variant="outline" size="sm" onClick={addTerm} className="h-8">
-                  <Plus className="mr-1 h-3.5 w-3.5" />Add term
-                </Button>
-              </div>
-            )}
+            <Label className="text-xs">Default loan term</Label>
+            <Select
+              value={String(defaultLoanTerm)}
+              onValueChange={(v) => setDefaultLoanTerm(Number(v))}
+              disabled={!canEdit}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TERM_OPTIONS.map((t) => {
+                  const rate = getTermInterestRate(t);
+                  const mult = getTermMultiplier(t);
+                  return (
+                    <SelectItem key={t} value={String(t)}>
+                      {t} days — Principal × (1 + 0.05×{mult}) = {rate}% interest
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
             <p className="text-[11px] text-muted-foreground">
-              Sundays are always excluded from collection days automatically.
+              Pre-selects the term when creating a new loan. Staff can still change it per loan.
             </p>
           </div>
         </div>

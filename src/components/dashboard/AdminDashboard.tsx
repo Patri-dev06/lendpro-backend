@@ -3,10 +3,11 @@ import { Link } from "@tanstack/react-router";
 import {
   Users, UserPlus, Repeat, AlertTriangle, AlertOctagon, CheckCircle2,
   Wallet, TrendingUp, ArrowUpRight, ArrowUp, ArrowDown, ArrowUpDown,
-  Loader2, UsersRound, Gauge, RefreshCw, Trophy, Calendar, Search,
+  Loader2, UsersRound, Gauge, RefreshCw, Trophy, Calendar, Search, Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { downloadCsv, exportDate } from "@/lib/export";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from "recharts";
@@ -334,7 +335,29 @@ export function AdminDashboard() {
       {/* ── Section 2: Financial Summary + Overdue/Past Due Balances ── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 rounded-2xl border bg-card p-5 shadow-sm">
-          <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Financial Summary</p>
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Financial Summary</p>
+            <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => downloadCsv(`financial-summary-${exportDate()}`, ["Metric", "Value"], [
+              ["Total Receivable",    financials.total_receivable],
+              ["Total Collected",     financials.total_collected],
+              ["Total Outstanding",   financials.total_outstanding],
+              ["Collection Efficiency (%)", financials.collection_efficiency],
+              ["Collected Today",     financials.collected_today],
+              ["Collected This Week", financials.collected_this_week],
+              ["Collected This Month",financials.collected_this_month],
+              ["Collected This Year", financials.collected_this_year],
+              ["Expected Daily",      financials.expected_daily],
+              ["Overdue Balance",     financials.overdue_balance],
+              ["Past Due Balance",    financials.past_due_balance],
+              ["Active Loans",        counts.active],
+              ["Overdue Accounts",    counts.overdue],
+              ["Past Due Accounts",   counts.past_due],
+              ["Paid Loans",          counts.paid],
+              ["Total Clients",       counts.total_clients],
+            ])}>
+              <Download className="h-3.5 w-3.5" />Export
+            </Button>
+          </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <FinStat label="Releases This Month" value={formatPHP(releasesThisMonth, { compact: true })} icon={ArrowUpRight} tone="info" />
             <FinStat label="Releases This Year"  value={formatPHP(releasesThisYear, { compact: true })}  icon={ArrowUpRight} tone="info"    sub="running total" />
@@ -473,7 +496,7 @@ export function AdminDashboard() {
           </div>
         </ChartCard>
 
-        <ChartCard title="Monthly loan releases" subtitle="Total disbursed per month">
+        <ChartCard title="Monthly loan releases" subtitle="Total disbursed per month" onExport={() => downloadCsv(`monthly-releases-${exportDate()}`, ["Month", "Total Released (PHP)"], stats.monthly_releases.map((r) => [r.month, Number(r.releases)]))}>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={monthlyReleases}>
               <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
@@ -485,7 +508,8 @@ export function AdminDashboard() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Monthly collections" subtitle="Total collected per month">
+        <ChartCard title="Monthly collections" subtitle="Total collected per month" onExport={() => downloadCsv(`monthly-collections-${exportDate()}`, ["Month", "Total Collected (PHP)"], stats.monthly_collection.map((r) => [r.month, Number(r.collected)]))}>
+
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={monthlyCollection}>
               <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
@@ -505,6 +529,18 @@ export function AdminDashboard() {
             <h3 className="font-display text-base font-semibold">Collector Performance</h3>
             <p className="text-xs text-muted-foreground">Collection targets vs. actuals — {collectorPeriodLabel[collectorPeriod]}</p>
           </div>
+          <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => downloadCsv(`collector-performance-${collectorPeriod}-${exportDate()}`,
+            ["Collector", "Area", "Clients", "Expected (PHP)", "Collected (PHP)", "Today (PHP)", "This Month (PHP)", "This Year (PHP)", "Rate (%)", "Overdue", "Past Due"],
+            cpRows.map((c) => {
+              const collected = collectorCollected(c, collectorPeriod);
+              const expected  = collectorExpected(c, collectorPeriod);
+              return [c.name, c.area, c.assigned, expected.toFixed(2), collected.toFixed(2),
+                c.collected_today.toFixed(2), c.collected_month.toFixed(2), c.collected_year.toFixed(2),
+                effRate(collected, expected), c.overdue, c.past_due];
+            }))}>
+            <Download className="h-3.5 w-3.5" />Export
+          </Button>
           <Select value={collectorPeriod} onValueChange={(v) => setCollectorPeriod(v as CollectorPeriod)}>
             <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -514,6 +550,7 @@ export function AdminDashboard() {
               <SelectItem value="year">This Year</SelectItem>
             </SelectContent>
           </Select>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <Table className="min-w-200">
@@ -625,9 +662,21 @@ export function AdminDashboard() {
 
       {/* ── Section 7: Collector Performance Summary ── */}
       <div className="rounded-2xl border bg-card shadow-sm">
-        <div className="border-b px-5 py-4">
-          <h3 className="font-display text-base font-semibold">Collector Performance Summary</h3>
-          <p className="text-xs text-muted-foreground">Clients, collectible, collected, and efficiency per collector</p>
+        <div className="flex items-center justify-between border-b px-5 py-4">
+          <div>
+            <h3 className="font-display text-base font-semibold">Collector Performance Summary</h3>
+            <p className="text-xs text-muted-foreground">Clients, collectible, collected, and efficiency per collector</p>
+          </div>
+          <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => downloadCsv(`collector-summary-${exportDate()}`,
+            ["Collector", "Clients", "Daily Collectible", "Daily Collected", "Daily Eff%", "Weekly Collectible", "Weekly Collected", "Weekly Eff%", "Monthly Collectible", "Monthly Collected", "Monthly Eff%"],
+            stats.collector_stats.map((c) => [
+              c.name, c.assigned,
+              c.expected_daily.toFixed(2), c.collected_today.toFixed(2), effRate(c.collected_today, c.expected_daily),
+              (c.expected_daily * 6).toFixed(2), c.collected_week.toFixed(2), effRate(c.collected_week, c.expected_daily * 6),
+              c.expected_month.toFixed(2), c.collected_month.toFixed(2), effRate(c.collected_month, c.expected_month),
+            ]))}>
+            <Download className="h-3.5 w-3.5" />Export
+          </Button>
         </div>
         <div className="overflow-x-auto">
           <Table className="min-w-225">
@@ -700,6 +749,12 @@ export function AdminDashboard() {
             <p className="text-xs text-muted-foreground">All active client accounts and loan health</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" className="h-9 gap-1 text-xs" onClick={() => downloadCsv(`client-monitoring-${exportDate()}`,
+              ["Client", "Store", "Loan #", "Type", "Principal (PHP)", "Net (PHP)", "Daily (PHP)", "Balance (PHP)", "Due Date", "Status"],
+              monFiltered.map((l) => [l.client.name, l.client.store_name, l.number, l.loan_type,
+                l.principal, l.total_receivable, l.daily_payment, l.current_balance, l.due_date ?? "", l.status]))}>
+              <Download className="h-3.5 w-3.5" />Export
+            </Button>
             <Input placeholder="Search client…" className="h-9 w-48" value={search} onChange={(e) => setSearch(e.target.value)} />
             <SelectTriggerSm value={statusFilter} onChange={setStatusFilter} placeholder="Status" options={[
               { v: "all", l: "All status" }, { v: "new", l: "New" }, { v: "renew", l: "Renew" },

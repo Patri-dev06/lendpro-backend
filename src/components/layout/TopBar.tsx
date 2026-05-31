@@ -1,4 +1,5 @@
-import { Search, ChevronDown, LogOut, Settings } from "lucide-react";
+import { useState } from "react";
+import { Search, ChevronDown, LogOut, Settings, KeyRound } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
@@ -10,11 +11,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ROLE_LABELS, useRole } from "@/lib/role-context";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { ChangePasswordDialog } from "@/components/layout/ChangePasswordDialog";
 import { formatDate } from "@/lib/format";
 
 export function TopBar() {
   const navigate = useNavigate();
   const { role, user, logout } = useRole();
+  const [changePwOpen, setChangePwOpen] = useState(false);
   const displayName = user?.name ?? "User";
   const initials = displayName.split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
@@ -86,6 +89,9 @@ export function TopBar() {
             </DropdownMenuLabel>
 
             <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setChangePwOpen(true)} className="cursor-pointer">
+              <KeyRound className="mr-2 h-4 w-4" />Change Password
+            </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <a href="/settings" className="cursor-pointer">
                 <Settings className="mr-2 h-4 w-4" />Settings
@@ -97,6 +103,8 @@ export function TopBar() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      <ChangePasswordDialog open={changePwOpen} onClose={() => setChangePwOpen(false)} />
     </header>
   );
 }

@@ -9,9 +9,9 @@ import { Field } from "@/components/shared/Field";
 import { SumRow } from "@/components/shared/SumRow";
 import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { DateInput } from "@/components/shared/DateInput";
-import { formatPHP, formatDate, addNonSundayDays } from "@/lib/format";
+import { formatPHP, formatDate, addCalendarDays } from "@/lib/format";
 import { LOAN_TYPE_LABELS, type LoanType } from "@/lib/loan-constants";
-import { getTermInterestRate, calcInterest, calcServiceCharge, calcDailyPayment } from "@/lib/loan-calc";
+import { getTermInterestRate, getTermMultiplier, calcInterest, calcServiceCharge, calcDailyPayment } from "@/lib/loan-calc";
 import { printTILA, printInvoice, printLoanForm } from "@/lib/loan-prints";
 import { apiRequest } from "@/lib/api";
 import { toast } from "sonner";
@@ -26,21 +26,12 @@ interface ApiClient {
   email: string | null;
   type: string;
   status: string;
-  collector_id: number | null;
-}
-
-interface ApiCollector {
-  id: number;
-  name: string;
-  code: string;
-  area: string;
 }
 
 export interface ApiLoan {
   id: number;
   number: string;
   client_id: number;
-  collector_id: number;
   loan_type: string;
   principal: number;
   interest: number;
@@ -56,7 +47,6 @@ export interface ApiLoan {
   status: string;
   remarks: string | null;
   client: ApiClient;
-  collector: ApiCollector;
 }
 
 interface Props {
@@ -68,23 +58,21 @@ interface Props {
 interface ApiSetting { key: string; value: string | null; }
 
 export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Props) {
-  const [clients, setClients]     = useState<ApiClient[]>([]);
-  const [collectors, setCollectors] = useState<ApiCollector[]>([]);
+  const [clients, setClients] = useState<ApiClient[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
+  const TERM_OPTIONS = [26, 39, 52] as const;
+
   // Settings-driven defaults
-  const [defaultInterestRate, setDefaultInterestRate] = useState(0);
   const [defaultScRate, setDefaultScRate] = useState(0);
-  const [termOptions, setTermOptions] = useState<number[]>([30, 45, 60]);
   const [holidays, setHolidays] = useState<string[]>([]);
 
-  const [loanType, setLoanType]   = useState<LoanType>("new-loan");
-  const [clientId, setClientId]   = useState<number | null>(null);
-  const [collectorId, setCollectorId] = useState<number | null>(null);
+  const [loanType, setLoanType] = useState<LoanType>("new-loan");
+  const [clientId, setClientId] = useState<number | null>(null);
   const [principal, setPrincipal] = useState(10000);
   const [interest, setInterest]   = useState(0);
   const [sc, setSc]               = useState(0);
-  const [termDays, setTermDays]   = useState<number>(45);
+  const [termDays, setTermDays]   = useState<number>(52);
   const [holidayCount, setHolidayCount] = useState(0);
   const [daily, setDaily]         = useState(0);
   const [date, setDate]           = useState(new Date().toISOString().slice(0, 10));
@@ -96,22 +84,17 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
   const fetchDropdowns = useCallback(async () => {
     if (!token) return;
     try {
-      const [cls, cols, settingsRaw] = await Promise.all([
+      const [cls, settingsRaw] = await Promise.all([
         apiRequest<ApiClient[]>("GET", "clients", { token }),
-        apiRequest<ApiCollector[]>("GET", "collectors", { token }),
         apiRequest<ApiSetting[]>("GET", "settings", { token }),
       ]);
 
       // Parse settings
-      const smap = Object.fromEntries(settingsRaw.map((s) => [s.key, s.value ?? ""]));
-      const rate = parseFloat(smap.default_interest_rate ?? "0") || 0;
-      const scRate = parseFloat(smap.default_service_charge ?? "0") || 0;
-      const defSc = Math.round(10000 * scRate / 100);
-      let terms: number[] = [30, 45, 60];
-      try {
-        const parsed = JSON.parse(smap.loan_term_options ?? "[30,45,60]");
-        if (Array.isArray(parsed) && parsed.length > 0) terms = parsed.map(Number).sort((a, b) => a - b);
-      } catch { /* keep default */ }
+      const smap    = Object.fromEntries(settingsRaw.map((s) => [s.key, s.value ?? ""]));
+      const scRate  = parseFloat(smap.default_service_charge ?? "0") || 0;
+      const defSc   = Math.round(10000 * scRate / 100);
+      const stored  = parseInt(smap.default_loan_term ?? "52", 10);
+      const defTerm = ([26, 39, 52] as number[]).includes(stored) ? stored : 52;
 
       let parsedHolidays: string[] = [];
       try {
@@ -119,30 +102,21 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
         if (Array.isArray(h)) parsedHolidays = h.map((x: { date?: string } | string) => (typeof x === "string" ? x : x.date ?? "")).filter(Boolean);
       } catch { /* keep empty */ }
 
-      setDefaultInterestRate(rate);
       setDefaultScRate(scRate);
-      setTermOptions(terms);
       setHolidays(parsedHolidays);
       setSc(defSc);
+      setTermDays(defTerm);
 
-      const defaultTerm = terms.includes(45) ? 45 : terms[0];
-      setTermDays(defaultTerm);
-
-      const defaultInterest = calcInterest(10000, defaultTerm);
+      const defaultInterest = calcInterest(10000, defTerm);
       setInterest(defaultInterest);
-      recalcDailyRaw(10000, defaultInterest, defSc, defaultTerm);
+      recalcDailyRaw(10000, defaultInterest, defSc, defTerm);
 
       setClients(cls);
-      setCollectors(cols);
-      const preselect = initialClientId ? cls.find((c) => c.id === initialClientId) : null;
+      const preselect   = initialClientId ? cls.find((c) => c.id === initialClientId) : null;
       const firstClient = preselect ?? (cls.length > 0 ? cls[0] : null);
-      if (firstClient) {
-        setClientId(firstClient.id);
-        if (firstClient.collector_id) setCollectorId(firstClient.collector_id);
-      }
-      if (!preselect && cols.length > 0) setCollectorId(cols[0].id);
+      if (firstClient) setClientId(firstClient.id);
     } catch {
-      toast.error("Failed to load clients / collectors.");
+      toast.error("Failed to load clients.");
     } finally {
       setLoadingData(false);
     }
@@ -151,11 +125,12 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
   useEffect(() => { fetchDropdowns(); }, [fetchDropdowns]);
 
   const totalLoanAmount = principal + interest;
-  const totalReceivable = totalLoanAmount + sc;
-  const dueDate = date ? addNonSundayDays(date, termDays + holidayCount, holidays) : null;
+  const totalReceivable = totalLoanAmount;          // processing fee is deducted from release, not added to balance
+  const amountToRelease = principal - sc;           // what the client actually receives
+  const dueDate = date ? addCalendarDays(date, termDays + holidayCount, holidays) : null;
 
-  function recalcDailyRaw(p: number, i: number, s: number, t: number) {
-    setDaily(calcDailyPayment(p + i + s, t));
+  function recalcDailyRaw(p: number, i: number, _s: number, t: number) {
+    setDaily(calcDailyPayment(p + i, t));
   }
 
   function recalcDaily(p: number, i: number, s: number, t: number) {
@@ -181,9 +156,8 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!clientId)         e.client    = "Select a client.";
-    if (!collectorId)      e.collector = "Select a collector.";
-    if (principal <= 0)    e.principal = "Principal must be greater than 0.";
+    if (!clientId)      e.client    = "Select a client.";
+    if (principal <= 0) e.principal = "Principal must be greater than 0.";
     if (sc < 0)            e.sc        = "Processing fee cannot be negative.";
     if (daily <= 0)        e.daily     = "Daily payment must be greater than 0.";
     if (!date)             e.date      = "Release date is required.";
@@ -198,9 +172,8 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
       const loan = await apiRequest<ApiLoan>("POST", "loans", {
         token,
         body: {
-          client_id:      clientId,
-          collector_id:   collectorId,
-          loan_type:      loanType,
+          client_id:  clientId,
+          loan_type:  loanType,
           principal,
           interest,
           service_charge: sc,
@@ -217,9 +190,9 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
       onLoanCreated(loan);
       // Reset form — restore setting-based defaults
       const resetPrincipal = 10000;
-      const resetInterest  = defaultInterestRate > 0 ? Math.round(resetPrincipal * defaultInterestRate / 100) : 0;
       const resetSc        = Math.round(resetPrincipal * defaultScRate / 100);
-      const resetTerm      = termOptions.includes(45) ? 45 : termOptions[0];
+      const resetTerm      = termDays;
+      const resetInterest  = calcInterest(resetPrincipal, resetTerm);
       setPrincipal(resetPrincipal);
       setInterest(resetInterest);
       setTermDays(resetTerm);
@@ -234,13 +207,11 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
     }
   }
 
-  const selectedClient    = clients.find((c) => c.id === clientId);
-  const selectedCollector = collectors.find((c) => c.id === collectorId);
-  const canPrint = !!selectedClient && !!selectedCollector && principal > 0 && !!date;
+  const selectedClient = clients.find((c) => c.id === clientId);
+  const canPrint       = !!selectedClient && principal > 0 && !!date;
 
   const printParams = {
-    client:         selectedClient ?? { name: "", store_name: "", address: "", phone: "" },
-    collector:      selectedCollector ?? { name: "" },
+    client:   selectedClient ?? { name: "", store_name: "", address: "", phone: "" },
     loanType, date, principal, interest, sc,
     totalLoanAmount, totalReceivable, daily, termDays, dueDate, remarks,
   };
@@ -297,10 +268,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
               }))}
               value={clientId?.toString() ?? ""}
               onChange={(v) => {
-                const id = Number(v);
-                setClientId(id);
-                const client = clients.find((c) => c.id === id);
-                if (client?.collector_id) setCollectorId(client.collector_id);
+                setClientId(Number(v));
                 setErrors((e) => ({ ...e, client: "" }));
               }}
               placeholder={
@@ -311,20 +279,6 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
               error={!!errors.client}
             />
           </div>
-
-          <Field label="Assigned collector" error={errors.collector}>
-            <SearchableCombobox
-              options={collectors.map((c) => ({
-                value: c.id.toString(),
-                label: c.name,
-                sub: c.area,
-              }))}
-              value={collectorId?.toString() ?? ""}
-              onChange={(v) => { setCollectorId(Number(v)); setErrors((e) => ({ ...e, collector: "" })); }}
-              placeholder="Search by name or area…"
-              error={!!errors.collector}
-            />
-          </Field>
 
           <Field label="Principal loan (₱)" error={errors.principal}>
             <Input
@@ -348,7 +302,11 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
             <Select value={String(termDays)} onValueChange={(v) => handleTermChange(Number(v))}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {termOptions.map((t) => <SelectItem key={t} value={String(t)}>{t} collection days (Mon–Sat)</SelectItem>)}
+                {TERM_OPTIONS.map((t) => (
+                  <SelectItem key={t} value={String(t)}>
+                    {t} days · {getTermInterestRate(t)}% interest (×{getTermMultiplier(t)})
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </Field>
@@ -432,10 +390,11 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
         <p className="text-xs opacity-75">Live calculation based on inputs</p>
         <dl className="mt-5 space-y-3 text-sm">
           <SumRow label="Principal" value={formatPHP(principal)} />
-          <SumRow label="Interest" value={formatPHP(interest)} />
+          <SumRow label="Processing fee (−)" value={formatPHP(sc)} />
           <div className="my-2 border-t border-primary-foreground/20" />
-          <SumRow label="Total loan amount" value={formatPHP(totalLoanAmount)} bold />
-          <SumRow label="Processing fee" value={formatPHP(sc)} />
+          <SumRow label="Net" value={formatPHP(amountToRelease)} bold />
+          <div className="my-2 border-t border-primary-foreground/20" />
+          <SumRow label="Interest" value={formatPHP(interest)} />
           <div className="my-2 border-t border-primary-foreground/20" />
           <SumRow label="Starting balance" value={formatPHP(totalReceivable)} bold />
           <div className="my-2 border-t border-primary-foreground/20" />

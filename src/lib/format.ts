@@ -20,14 +20,13 @@ export function addDays(d: Date | string, days: number) {
   return date;
 }
 
-export function addNonSundayDays(startDate: Date | string, n: number, holidays: string[] = []): Date {
+export function addCalendarDays(startDate: Date | string, n: number, holidays: string[] = []): Date {
   const skip = new Set(holidays);
   const d = typeof startDate === "string" ? new Date(startDate) : new Date(startDate);
   let added = 0;
   while (added < n) {
     d.setDate(d.getDate() + 1);
-    const iso = d.toISOString().slice(0, 10);
-    if (d.getDay() !== 0 && !skip.has(iso)) added++;
+    if (!skip.has(d.toISOString().slice(0, 10))) added++;
   }
   return d;
 }

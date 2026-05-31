@@ -27,17 +27,18 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   admin: ALL,
 
   manager: [
-    "clients:read",
-    "loans:read",
+    "clients:read", "clients:write",
+    "loans:read",   "loans:write",
     "schedule:read",
     "payments:read",
     "reports:read",
-    "collectors:read",
+    "collectors:read", "collectors:write",
     "audit:read",
   ],
 
   accounting_clerk: [
     "clients:read",
+    "loans:read",
     "schedule:read",
     "payments:read", "payments:write",
     "reports:read",

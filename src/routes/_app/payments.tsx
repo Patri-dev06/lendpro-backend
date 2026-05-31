@@ -9,6 +9,7 @@ import { DirectInputTab } from "@/components/payments/DirectInputTab";
 import { UploadExcelTab } from "@/components/payments/UploadExcelTab";
 import { CollectorSummaryTab } from "@/components/payments/CollectorSummaryTab";
 import { ClientLedgerTab } from "@/components/payments/ClientLedgerTab";
+import { CollectionSheetDialog } from "@/components/payments/CollectionSheetDialog";
 
 export const Route = createFileRoute("/_app/payments")({
   head: () => ({ meta: [{ title: "Payments — BuenaMano" }] }),
@@ -25,6 +26,7 @@ function PaymentsPage() {
       <PageHeader
         title="Payments & Collections"
         subtitle="Record daily collections, upload Excel files, and generate printable collector summary reports."
+        actions={<CollectionSheetDialog />}
       />
       <Tabs defaultValue="direct">
         <TabsList>

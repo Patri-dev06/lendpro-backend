@@ -1,8 +1,13 @@
 export function getTermInterestRate(termDays: number): number {
-  if (termDays === 30) return 5;
-  if (termDays === 45) return 7.5;
-  if (termDays === 60) return 10;
-  return Math.round((termDays / 30) * 5 * 10) / 10;
+  // Base: 26 collection days = 5% interest (×1 multiplier)
+  // Formula: rate = (termDays / 26) × 5%
+  // 26 days → 5%, 39 days → 7.5%, 52 days → 10%
+  const multiplier = termDays / 26;
+  return Math.round(5 * multiplier * 10) / 10;
+}
+
+export function getTermMultiplier(termDays: number): number {
+  return Math.round((termDays / 26) * 10) / 10;
 }
 
 export function calcInterest(principal: number, termDays: number): number {

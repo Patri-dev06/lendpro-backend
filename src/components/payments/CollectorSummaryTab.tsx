@@ -32,11 +32,11 @@ export function CollectorSummaryTab() {
   const { token } = useRole();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [collectors, setCollectors] = useState<ApiCollector[]>([]);
-  const [date, setDate]             = useState(today);
+  const [collectors, setCollectors]           = useState<ApiCollector[]>([]);
+  const [date, setDate]                       = useState(today);
   const [collectorFilter, setCollectorFilter] = useState("all");
-  const [summary, setSummary]       = useState<SummaryResponse | null>(null);
-  const [loading, setLoading]       = useState(false);
+  const [summary, setSummary]                 = useState<SummaryResponse | null>(null);
+  const [loading, setLoading]                 = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const fetchCollectors = useCallback(async () => {
@@ -44,9 +44,7 @@ export function CollectorSummaryTab() {
     try {
       const data = await apiRequest<ApiCollector[]>("GET", "collectors", { token });
       setCollectors(data);
-    } catch {
-      toast.error("Failed to load collectors.");
-    }
+    } catch { /* silent — filter just won't populate */ }
   }, [token]);
 
   const fetchSummary = useCallback(async () => {
@@ -55,10 +53,12 @@ export function CollectorSummaryTab() {
     try {
       const params = new URLSearchParams({ date });
       if (collectorFilter !== "all") params.set("collector_id", collectorFilter);
-      const data = await apiRequest<SummaryResponse>("GET", `payments/collector-summary?${params}`, { token });
+      const data = await apiRequest<SummaryResponse>(
+        "GET", `payments/collector-summary?${params}`, { token }
+      );
       setSummary(data);
     } catch {
-      toast.error("Failed to load collector summary.");
+      toast.error("Failed to load collection summary.");
     } finally {
       setLoading(false);
     }
@@ -75,7 +75,7 @@ export function CollectorSummaryTab() {
       : collectors.find((c) => String(c.id) === collectorFilter)?.name ?? "";
     const win = window.open("", "_blank");
     if (!win) return;
-    win.document.write(`<html><head><title>Collector Summary — ${date}</title>
+    win.document.write(`<html><head><title>Collection Summary — ${date}</title>
 <style>
   body{font-family:Arial,sans-serif;font-size:12px;padding:32px;color:#111}
   h2{font-size:18px;margin:0 0 4px}.meta{font-size:11px;color:#666;margin-bottom:20px}
@@ -84,7 +84,7 @@ export function CollectorSummaryTab() {
   td{padding:7px 10px;border:1px solid #ddd}.right{text-align:right}
   .total td{font-weight:700;background:#f8f8f8;border-top:2px solid #aaa}
 </style></head><body>
-<h2>Collector Summary</h2>
+<h2>Collection Summary</h2>
 <div class="meta">Date: ${date} &nbsp;·&nbsp; ${collectorName}</div>
 ${content}
 </body></html>`);
@@ -92,7 +92,7 @@ ${content}
     win.print();
   }
 
-  const rows = summary?.rows ?? [];
+  const rows   = summary?.rows   ?? [];
   const totals = summary?.totals ?? { collectible: 0, balance: 0, payment: 0 };
 
   return (
@@ -121,7 +121,7 @@ ${content}
 
       <div className="rounded-2xl border bg-card shadow-sm">
         <div className="border-b px-5 py-4">
-          <h3 className="font-display text-base font-semibold">Collector Summary</h3>
+          <h3 className="font-display text-base font-semibold">Collection Summary</h3>
           <p className="text-xs text-muted-foreground">Daily collection report — {date}</p>
         </div>
 
