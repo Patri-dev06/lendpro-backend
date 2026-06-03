@@ -10,6 +10,7 @@ import { LOAN_TYPE_LABELS } from "@/lib/loan-constants";
 import { printLedger } from "@/lib/loan-prints";
 import { cn } from "@/lib/utils";
 import type { ApiLoan } from "@/components/loans/LoanCreateSection";
+import { LoanDetailSheet } from "@/components/loans/LoanDetailSheet";
 
 interface Props {
   loans: ApiLoan[];
@@ -23,6 +24,7 @@ export function ActiveLoanTable({ loans, loading }: Props) {
   const [collector, setCollector] = useState("all");
   const [sortCol, setSortCol]   = useState<SortCol | null>(null);
   const [sortDir, setSortDir]   = useState<"asc" | "desc">("desc");
+  const [selectedLoan, setSelectedLoan] = useState<ApiLoan | null>(null);
 
   function toggleSort(col: SortCol) {
     if (sortCol === col) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
@@ -157,7 +159,11 @@ export function ActiveLoanTable({ loans, loading }: Props) {
                 </TableCell>
               </TableRow>
             ) : sorted.map((l) => (
-              <TableRow key={l.id} className={cn(l.status === "paid" && "opacity-55")}>
+              <TableRow
+                key={l.id}
+                className={cn(l.status === "paid" && "opacity-55", "cursor-pointer hover:bg-muted/40")}
+                onClick={() => setSelectedLoan(l)}
+              >
 
                 {/* Loan # + type */}
                 <TableCell>
@@ -180,7 +186,7 @@ export function ActiveLoanTable({ loans, loading }: Props) {
                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(l.due_date)}</TableCell>
                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{l.collector.name}</TableCell>
 
-                <TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
                   <Button
                     size="sm" variant="ghost"
                     className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
@@ -196,6 +202,12 @@ export function ActiveLoanTable({ loans, loading }: Props) {
           </TableBody>
         </Table>
       </div>
+
+      <LoanDetailSheet
+        loan={selectedLoan}
+        open={!!selectedLoan}
+        onClose={() => setSelectedLoan(null)}
+      />
     </div>
   );
 }

@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Plus, X, Loader2, CalendarOff } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getTermInterestRate, getTermMultiplier } from "@/lib/loan-calc";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { PermissionGuard } from "@/components/shared/AccessRestricted";
 import { Button } from "@/components/ui/button";
@@ -32,12 +31,12 @@ function SettingsPage() {
   const [companyPhone, setCompanyPhone]   = useState("");
   const [companyEmail, setCompanyEmail]   = useState("");
 
-  const TERM_OPTIONS = [26, 39, 52] as const;
+  const TERM_OPTIONS = [30, 45, 60] as const;
 
   // Loan defaults
   const [interestRate, setInterestRate]       = useState("");
   const [serviceCharge, setServiceCharge]     = useState("");
-  const [defaultLoanTerm, setDefaultLoanTerm] = useState(52);
+  const [defaultLoanTerm, setDefaultLoanTerm] = useState(60);
 
   const [holidays, setHolidays] = useState<{ date: string; name: string }[]>([]);
   const [newHolidayDate, setNewHolidayDate] = useState("");
@@ -58,7 +57,7 @@ function SettingsPage() {
       setInterestRate(map.default_interest_rate  ?? "20");
       setServiceCharge(map.default_service_charge ?? "0");
       const storedTerm = parseInt(map.default_loan_term ?? "52", 10);
-      setDefaultLoanTerm([26, 39, 52].includes(storedTerm) ? storedTerm : 52);
+      setDefaultLoanTerm([30, 45, 60].includes(storedTerm) ? storedTerm : 60);
       try {
         const parsed = JSON.parse(map.holidays ?? "[]");
         if (Array.isArray(parsed)) setHolidays(parsed.filter((h: unknown) => h && typeof h === "object").sort((a: { date: string }, b: { date: string }) => a.date.localeCompare(b.date)));
@@ -231,15 +230,11 @@ function SettingsPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {TERM_OPTIONS.map((t) => {
-                  const rate = getTermInterestRate(t);
-                  const mult = getTermMultiplier(t);
-                  return (
-                    <SelectItem key={t} value={String(t)}>
-                      {t} days — Principal × (1 + 0.05×{mult}) = {rate}% interest
-                    </SelectItem>
-                  );
-                })}
+                {TERM_OPTIONS.map((t) => (
+                  <SelectItem key={t} value={String(t)}>
+                    {t} days
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-muted-foreground">

@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Sparkles, Printer, FileText, ClipboardList, Loader2 } from "lucide-react";
+import { useReactToPrint } from "react-to-print";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,8 +12,10 @@ import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { DateInput } from "@/components/shared/DateInput";
 import { formatPHP, formatDate, addCalendarDays } from "@/lib/format";
 import { LOAN_TYPE_LABELS, type LoanType } from "@/lib/loan-constants";
-import { getTermInterestRate, getTermMultiplier, calcInterest, calcServiceCharge, calcDailyPayment } from "@/lib/loan-calc";
-import { printTILA, printInvoice, printLoanForm } from "@/lib/loan-prints";
+import { calcInterest, calcServiceCharge, calcDailyPayment } from "@/lib/loan-calc";
+import { InvoiceDocument }       from "@/components/loans/print/InvoiceDocument";
+import { TILADocument }          from "@/components/loans/print/TILADocument";
+import { LoanAgreementDocument } from "@/components/loans/print/LoanAgreementDocument";
 import { apiRequest } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -61,7 +64,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
   const [clients, setClients] = useState<ApiClient[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
-  const TERM_OPTIONS = [26, 39, 52] as const;
+  const TERM_OPTIONS = [30, 45, 60] as const;
 
   // Settings-driven defaults
   const [defaultScRate, setDefaultScRate] = useState(0);
@@ -72,14 +75,23 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
   const [principal, setPrincipal] = useState(10000);
   const [interest, setInterest]   = useState(0);
   const [sc, setSc]               = useState(0);
-  const [termDays, setTermDays]   = useState<number>(52);
+  const [termDays, setTermDays]   = useState<number>(60);
   const [holidayCount, setHolidayCount] = useState(0);
   const [daily, setDaily]         = useState(0);
   const [date, setDate]           = useState(new Date().toISOString().slice(0, 10));
   const [remarks, setRemarks]     = useState("");
   const [saving, setSaving]       = useState(false);
   const [errors, setErrors]       = useState<Record<string, string>>({});
+  const [createdLoanNumber, setCreatedLoanNumber] = useState<string | undefined>(undefined);
   const [clientSearchBy, setClientSearchBy] = useState<"name" | "number" | "store">("name");
+
+  const tilaRef      = useRef<HTMLDivElement>(null);
+  const invoiceRef   = useRef<HTMLDivElement>(null);
+  const loanFormRef  = useRef<HTMLDivElement>(null);
+
+  const handlePrintTILA      = useReactToPrint({ contentRef: tilaRef,     documentTitle: "TILA" });
+  const handlePrintInvoice   = useReactToPrint({ contentRef: invoiceRef,  documentTitle: "Invoice" });
+  const handlePrintLoanForm  = useReactToPrint({ contentRef: loanFormRef, documentTitle: "Loan Agreement" });
 
   const fetchDropdowns = useCallback(async () => {
     if (!token) return;
@@ -94,7 +106,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
       const scRate  = parseFloat(smap.default_service_charge ?? "0") || 0;
       const defSc   = Math.round(10000 * scRate / 100);
       const stored  = parseInt(smap.default_loan_term ?? "52", 10);
-      const defTerm = ([26, 39, 52] as number[]).includes(stored) ? stored : 52;
+      const defTerm = ([30, 45, 60] as number[]).includes(stored) ? stored : 60;
 
       let parsedHolidays: string[] = [];
       try {
@@ -187,6 +199,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
       toast.success(`${LOAN_TYPE_LABELS[loanType]} created`, {
         description: `${loan.number} — ${termDays}-day schedule generated.`,
       });
+      setCreatedLoanNumber(loan.number);
       onLoanCreated(loan);
       // Reset form — restore setting-based defaults
       const resetPrincipal = 10000;
@@ -214,6 +227,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
     client:   selectedClient ?? { name: "", store_name: "", address: "", phone: "" },
     loanType, date, principal, interest, sc,
     totalLoanAmount, totalReceivable, daily, termDays, dueDate, remarks,
+    loanNumber: createdLoanNumber,
   };
 
   if (loadingData) {
@@ -269,6 +283,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
               value={clientId?.toString() ?? ""}
               onChange={(v) => {
                 setClientId(Number(v));
+                setCreatedLoanNumber(undefined);
                 setErrors((e) => ({ ...e, client: "" }));
               }}
               placeholder={
@@ -288,9 +303,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
             />
           </Field>
 
-          <Field
-            label={`Interest (₱) — ${getTermInterestRate(termDays)}% (${termDays}-day rate)`}
-          >
+          <Field label="Interest (₱)">
             <Input
               value={formatPHP(interest)}
               readOnly
@@ -304,7 +317,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
               <SelectContent>
                 {TERM_OPTIONS.map((t) => (
                   <SelectItem key={t} value={String(t)}>
-                    {t} days · {getTermInterestRate(t)}% interest (×{getTermMultiplier(t)})
+                    {t} days
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -363,14 +376,21 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
           </Field>
         </div>
 
+        {/* Hidden print targets — rendered off-screen, printed via react-to-print */}
+        <div style={{ position: "absolute", left: "-9999px", top: 0, width: "210mm" }}>
+          <TILADocument          ref={tilaRef}     {...printParams} />
+          <InvoiceDocument       ref={invoiceRef}  {...printParams} />
+          <LoanAgreementDocument ref={loanFormRef} {...printParams} />
+        </div>
+
         <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
-          <Button variant="outline" onClick={() => printTILA(printParams)} disabled={!canPrint}>
+          <Button variant="outline" onClick={() => handlePrintTILA()} disabled={!canPrint}>
             <FileText className="mr-1.5 h-4 w-4" />Print TILA
           </Button>
-          <Button variant="outline" onClick={() => printInvoice(printParams)} disabled={!canPrint}>
+          <Button variant="outline" onClick={() => handlePrintInvoice()} disabled={!canPrint}>
             <ClipboardList className="mr-1.5 h-4 w-4" />Print Invoice
           </Button>
-          <Button variant="outline" onClick={() => printLoanForm(printParams)} disabled={!canPrint}>
+          <Button variant="outline" onClick={() => handlePrintLoanForm()} disabled={!canPrint}>
             <Printer className="mr-1.5 h-4 w-4" />Print Loan Form
           </Button>
           <Button
@@ -388,22 +408,33 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
       <div className="rounded-2xl border bg-linear-to-br from-primary to-primary-glow p-6 text-primary-foreground shadow-md">
         <h3 className="font-display text-base font-semibold">Loan summary</h3>
         <p className="text-xs opacity-75">Live calculation based on inputs</p>
-        <dl className="mt-5 space-y-3 text-sm">
-          <SumRow label="Principal" value={formatPHP(principal)} />
-          <SumRow label="Processing fee (−)" value={formatPHP(sc)} />
-          <div className="my-2 border-t border-primary-foreground/20" />
-          <SumRow label="Net" value={formatPHP(amountToRelease)} bold />
-          <div className="my-2 border-t border-primary-foreground/20" />
-          <SumRow label="Interest" value={formatPHP(interest)} />
-          <div className="my-2 border-t border-primary-foreground/20" />
-          <SumRow label="Starting balance" value={formatPHP(totalReceivable)} bold />
-          <div className="my-2 border-t border-primary-foreground/20" />
-          <SumRow label="Daily payment" value={formatPHP(daily)} />
-          <SumRow label="Due date" value={dueDate ? formatDate(dueDate) : "—"} />
+
+        {/* Dates — top of summary */}
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="rounded-lg bg-primary-foreground/10 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider opacity-70">Date</p>
+            <p className="mt-0.5 text-sm font-semibold">
+              {date ? formatDate(date) : "—"}
+            </p>
+          </div>
+          <div className="rounded-lg bg-primary-foreground/10 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider opacity-70">Due Date</p>
+            <p className="mt-0.5 text-sm font-semibold">
+              {dueDate ? formatDate(dueDate) : "—"}
+            </p>
+          </div>
+        </div>
+
+        {/* Amounts */}
+        <dl className="mt-4 space-y-3 text-sm">
+          <SumRow label="Principal loan" value={formatPHP(principal)} />
+          <SumRow label="Interest"       value={formatPHP(interest)} />
+          <div className="my-1 border-t border-primary-foreground/20" />
+          <SumRow label="Total loan amount" value={formatPHP(totalLoanAmount)} bold />
+          <SumRow label="Fees"           value={formatPHP(sc)} />
+          <div className="my-1 border-t border-primary-foreground/20" />
+          <SumRow label="Daily payment"  value={formatPHP(daily)} bold />
         </dl>
-        <p className="mt-5 text-[11px] opacity-70">
-          Total Loan Amount = Principal + Interest. Starting Balance = Total + Processing Fee. Sundays and holidays are excluded from collection days.
-        </p>
       </div>
     </div>
   );

@@ -26,7 +26,9 @@ export function addCalendarDays(startDate: Date | string, n: number, holidays: s
   let added = 0;
   while (added < n) {
     d.setDate(d.getDate() + 1);
-    if (!skip.has(d.toISOString().slice(0, 10))) added++;
+    const isSunday  = d.getDay() === 0;
+    const isHoliday = skip.has(d.toISOString().slice(0, 10));
+    if (!isSunday && !isHoliday) added++;
   }
   return d;
 }

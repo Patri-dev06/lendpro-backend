@@ -81,9 +81,7 @@ export function CollectionSheetDialog() {
   const handleExcel = async () => {
     setActing(true);
     try {
-      const hint = selectedCollector
-        ? selectedCollector.name.replace(/\s+/g, "-").toLowerCase()
-        : "all";
+      const hint = selectedCollector ? selectedCollector.name : "All Collectors";
       exportCollectionSheetCsv(filteredLoans, settings.companyName, settings.companyAddr, hint);
       setOpen(false);
     } finally {
