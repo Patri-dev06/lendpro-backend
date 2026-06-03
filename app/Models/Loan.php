@@ -78,7 +78,7 @@ class Loan extends Model
         $added = 0;
         while ($added < $termDays) {
             $date->addDay();
-            if (!isset($holidaySet[$date->toDateString()])) {
+            if (!$date->isSunday() && !isset($holidaySet[$date->toDateString()])) {
                 $added++;
             }
         }
@@ -96,7 +96,7 @@ class Loan extends Model
         for ($i = 0; $i < $this->term_days; $i++) {
             do {
                 $date->addDay();
-            } while (isset($holidaySet[$date->toDateString()]));
+            } while ($date->isSunday() || isset($holidaySet[$date->toDateString()]));
 
             $prev = $balance;
             $balance = max(0, $balance - $this->daily_payment);
