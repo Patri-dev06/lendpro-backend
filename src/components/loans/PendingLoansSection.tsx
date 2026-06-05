@@ -107,8 +107,8 @@ export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
                 </div>
                 <div className="mt-0.5 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
                   <span>Principal: <span className="font-medium text-foreground">{formatPHP(loan.principal)}</span></span>
-                  <span>Release: <span className="font-medium text-foreground">{formatDate(loan.release_date + "T00:00:00")}</span></span>
-                  <span>Due: <span className="font-medium text-foreground">{formatDate(loan.due_date + "T00:00:00")}</span></span>
+                  <span>Release: <span className="font-medium text-foreground">{formatDate(loan.release_date.slice(0, 10) + "T00:00:00")}</span></span>
+                  <span>Due: <span className="font-medium text-foreground">{formatDate(loan.due_date.slice(0, 10) + "T00:00:00")}</span></span>
                 </div>
               </div>
 
@@ -169,11 +169,11 @@ export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Release Date</span>
-                  <span className="font-medium">{formatDate(confirmTarget.release_date + "T00:00:00")}</span>
+                  <span className="font-medium">{formatDate(confirmTarget.release_date.slice(0, 10) + "T00:00:00")}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Due Date</span>
-                  <span className="font-medium">{formatDate(confirmTarget.due_date + "T00:00:00")}</span>
+                  <span className="font-medium">{formatDate(confirmTarget.due_date.slice(0, 10) + "T00:00:00")}</span>
                 </div>
               </div>
               <p className="text-muted-foreground text-xs">
@@ -214,7 +214,7 @@ export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Current Release Date</span>
-                  <span className="font-medium">{formatDate(rescheduleTarget.release_date + "T00:00:00")}</span>
+                  <span className="font-medium">{formatDate(rescheduleTarget.release_date.slice(0, 10) + "T00:00:00")}</span>
                 </div>
               </div>
 
