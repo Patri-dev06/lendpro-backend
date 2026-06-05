@@ -6,7 +6,15 @@ interface Props extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: boolean;
 }
 
-export function DateInput({ className, error, ...props }: Props) {
+function formatDisplay(value: string | undefined): string {
+  if (!value) return "";
+  // Parse as local time to avoid UTC-offset shift
+  const d = new Date(value + "T00:00:00");
+  if (isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+}
+
+export function DateInput({ className, error, value, ...props }: Props) {
   const ref = useRef<HTMLInputElement>(null);
 
   function openPicker() {
@@ -18,21 +26,32 @@ export function DateInput({ className, error, ...props }: Props) {
     }
   }
 
+  const display = formatDisplay(value as string | undefined);
+
   return (
     <div className="flex items-center gap-1.5">
-      <input
-        ref={ref}
-        type="date"
-        className={cn(
-          "hide-date-icon flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm",
-          "ring-offset-background placeholder:text-muted-foreground",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-          "disabled:cursor-not-allowed disabled:opacity-50",
-          error && "border-destructive",
-          className,
-        )}
-        {...props}
-      />
+      <div className="relative flex-1">
+        {/* Formatted display */}
+        <div
+          onClick={openPicker}
+          className={cn(
+            "flex h-9 w-full cursor-pointer select-none items-center rounded-md border border-input bg-background px-3 py-2 text-sm",
+            error && "border-destructive",
+            !display && "text-muted-foreground",
+            className,
+          )}
+        >
+          {display || "Select a date"}
+        </div>
+        {/* Native date input — invisible but present so showPicker() works */}
+        <input
+          ref={ref}
+          type="date"
+          value={value}
+          style={{ position: "absolute", opacity: 0, pointerEvents: "none", top: 0, left: 0, width: "100%", height: "100%" }}
+          {...props}
+        />
+      </div>
       <button
         type="button"
         tabIndex={-1}

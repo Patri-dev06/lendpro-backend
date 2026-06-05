@@ -110,7 +110,7 @@ export function Divider({ color = "#000" }: { color?: string }) {
 
 export function SigBlock({ name, role }: { name: string; role: string }) {
   return (
-    <div style={{ flex: 1, textAlign: "center", fontSize: 9 }}>
+    <div style={{ flex: "1 1 0", minWidth: 0, textAlign: "center", fontSize: 9 }}>
       <div style={{ height: 48 }} />
       <div style={{ borderTop: "1px solid #000", marginBottom: 4 }} />
       <div style={{ fontWeight: "bold", fontSize: 10 }}>{name}</div>

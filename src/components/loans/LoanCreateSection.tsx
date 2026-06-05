@@ -300,7 +300,9 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
 
           <Field label="Principal loan (₱)" error={errors.principal}>
             <Input
-              type="number" min={0} value={principal}
+              type="number" min={0}
+              value={principal === 0 ? "" : principal}
+              placeholder="e.g. 10,000"
               className={errors.principal ? "border-destructive" : ""}
               onChange={(e) => handlePrincipalChange(Number(e.target.value) || 0)}
             />
