@@ -7,6 +7,13 @@ import {
 import { Label } from "@/components/ui/label";
 import { DateInput } from "@/components/shared/DateInput";
 import { formatPHP, formatDate, addDays } from "@/lib/format";
+
+// Parse any date format the API returns (ISO UTC, ISO+offset, or plain YYYY-MM-DD)
+// and display in local (Manila) timezone
+function fmtApiDate(s: string): string {
+  const d = new Date(s.replace(" ", "T"));
+  return isNaN(d.getTime()) ? s : formatDate(d);
+}
 import { apiRequest } from "@/lib/api";
 import { toast } from "sonner";
 import type { ApiLoan } from "@/components/loans/LoanCreateSection";
@@ -107,8 +114,8 @@ export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
                 </div>
                 <div className="mt-0.5 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
                   <span>Principal: <span className="font-medium text-foreground">{formatPHP(loan.principal)}</span></span>
-                  <span>Release: <span className="font-medium text-foreground">{formatDate(loan.release_date.slice(0, 10) + "T00:00:00")}</span></span>
-                  <span>Due: <span className="font-medium text-foreground">{formatDate(loan.due_date.slice(0, 10) + "T00:00:00")}</span></span>
+                  <span>Release: <span className="font-medium text-foreground">{fmtApiDate(loan.release_date)}</span></span>
+                  <span>Due: <span className="font-medium text-foreground">{fmtApiDate(loan.due_date)}</span></span>
                 </div>
               </div>
 
@@ -169,11 +176,11 @@ export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Release Date</span>
-                  <span className="font-medium">{formatDate(confirmTarget.release_date.slice(0, 10) + "T00:00:00")}</span>
+                  <span className="font-medium">{fmtApiDate(confirmTarget.release_date)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Due Date</span>
-                  <span className="font-medium">{formatDate(confirmTarget.due_date.slice(0, 10) + "T00:00:00")}</span>
+                  <span className="font-medium">{fmtApiDate(confirmTarget.due_date)}</span>
                 </div>
               </div>
               <p className="text-muted-foreground text-xs">
@@ -214,7 +221,7 @@ export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Current Release Date</span>
-                  <span className="font-medium">{formatDate(rescheduleTarget.release_date.slice(0, 10) + "T00:00:00")}</span>
+                  <span className="font-medium">{fmtApiDate(rescheduleTarget.release_date)}</span>
                 </div>
               </div>
 
