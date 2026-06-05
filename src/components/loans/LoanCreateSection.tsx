@@ -35,6 +35,7 @@ export interface ApiLoan {
   id: number;
   number: string;
   client_id: number;
+  collector_id: number;
   loan_type: string;
   principal: number;
   interest: number;
@@ -50,6 +51,7 @@ export interface ApiLoan {
   status: string;
   remarks: string | null;
   client: ApiClient;
+  collector: { id: number; name: string; area: string };
 }
 
 interface Props {

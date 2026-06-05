@@ -86,22 +86,6 @@ function SettingsPage() {
     setHolidays((prev) => prev.filter((h) => h.date !== date));
   }
 
-  function addTerm() {
-    const v = parseInt(newTerm, 10);
-    if (!v || v < 1 || v > 365) return;
-    if (termOptions.includes(v)) { setNewTerm(""); return; }
-    setTermOptions((prev) => [...prev, v].sort((a, b) => a - b));
-    setNewTerm("");
-  }
-
-  function removeTerm(t: number) {
-    if (termOptions.length <= 1) {
-      toast.error("At least one loan term option is required.");
-      return;
-    }
-    setTermOptions((prev) => prev.filter((x) => x !== t));
-  }
-
   async function handleSave() {
     if (!token) return;
     const irNum = parseFloat(interestRate);
