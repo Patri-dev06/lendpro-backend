@@ -1,13 +1,10 @@
 export function getTermInterestRate(termDays: number): number {
-  // Base: 26 collection days = 5% interest (×1 multiplier)
-  // Formula: rate = (termDays / 26) × 5%
-  // 26 days → 5%, 39 days → 7.5%, 52 days → 10%
-  const multiplier = termDays / 26;
-  return Math.round(5 * multiplier * 10) / 10;
+  // 1 month (30 days) = 5%, 1.5 months (45 days) = 7.5%, 2 months (60 days) = 10%
+  return (termDays / 30) * 5;
 }
 
 export function getTermMultiplier(termDays: number): number {
-  return Math.round((termDays / 26) * 10) / 10;
+  return termDays / 30;
 }
 
 export function calcInterest(principal: number, termDays: number): number {
@@ -22,10 +19,12 @@ export function calcTotalReceivable(principal: number, interest: number, service
   return principal + interest + serviceCharge;
 }
 
-/** Daily payment rounds UP so the loan fully clears within the term. */
+/** Daily payment rounds UP so the loan fully clears within the term.
+ *  Divides by collection days (calendar days minus Sundays). */
 export function calcDailyPayment(totalReceivable: number, termDays: number): number {
   if (termDays <= 0 || totalReceivable <= 0) return 0;
-  return Math.ceil(totalReceivable / termDays);
+  const collectionDays = termDays - Math.floor(termDays / 7);
+  return Math.ceil(totalReceivable / collectionDays);
 }
 
 /** Balance is clamped at 0 — overpayments never produce a negative balance. */

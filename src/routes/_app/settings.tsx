@@ -172,7 +172,7 @@ function SettingsPage() {
           <Field label="Default interest rate (% of principal)">
             <div className="relative">
               <Input
-                type="number" min={0} max={100} step={0.01}
+                type="number" min={0} max={100} step="any"
                 value={interestRate}
                 onChange={(e) => setInterestRate(e.target.value)}
                 disabled={!canEdit}
@@ -189,7 +189,7 @@ function SettingsPage() {
           <Field label="Default processing fee rate (%)">
             <div className="relative">
               <Input
-                type="number" min={0} max={100} step={0.1}
+                type="number" min={0} max={100} step="any"
                 value={serviceCharge}
                 onChange={(e) => setServiceCharge(e.target.value)}
                 disabled={!canEdit}
