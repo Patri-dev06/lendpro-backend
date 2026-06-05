@@ -133,22 +133,9 @@ function ClientDetail() {
     ? Math.round(100 - (activeLoan.current_balance / activeLoan.total_receivable) * 100)
     : 0;
 
-  // Merge actual payments with synthetic processing-fee rows (one per loan), sorted by date
   type PaymentRow = { key: string; date: string; amount: number; prevBal: number | null; newBal: number | null; collector: string; remarks: string; isFee: boolean };
-  const paymentRows: PaymentRow[] = [
-    ...allLoans
-      .filter((l) => l.service_charge > 0)
-      .map((l) => ({
-        key:       `fee-${l.id}`,
-        date:      l.release_date,
-        amount:    l.service_charge,
-        prevBal:   null,
-        newBal:    null,
-        collector: "—",
-        remarks:   "Processing Fee",
-        isFee:     true,
-      })),
-    ...client.payments.map((p) => ({
+  const paymentRows: PaymentRow[] = client.payments
+    .map((p) => ({
       key:       String(p.id),
       date:      p.payment_date,
       amount:    p.amount,
@@ -156,9 +143,9 @@ function ClientDetail() {
       newBal:    p.new_balance,
       collector: p.collector?.name ?? "—",
       remarks:   p.remarks ?? "—",
-      isFee:     false,
-    })),
-  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      isFee:     p.remarks === "Processing Fee",
+    }))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   function handleReloanCreated() {
     setReloanOpen(false);
