@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { LoanCreateSection, type ApiLoan } from "@/components/loans/LoanCreateSection";
 import { ActiveLoanTable } from "@/components/loans/ActiveLoanTable";
+import { PendingLoansSection } from "@/components/loans/PendingLoansSection";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { toast } from "sonner";
@@ -40,12 +41,32 @@ function LoansPage() {
     setLoans((prev) => [loan, ...prev]);
   }
 
+  function handlePendingChanged(updated: ApiLoan[], removedId?: number) {
+    setLoans((prev) => {
+      let next = prev;
+      if (removedId !== undefined) {
+        next = next.filter((l) => l.id !== removedId);
+      }
+      for (const u of updated) {
+        const idx = next.findIndex((l) => l.id === u.id);
+        if (idx >= 0) {
+          next = [...next.slice(0, idx), u, ...next.slice(idx + 1)];
+        }
+      }
+      return next;
+    });
+  }
+
+  const pendingLoans = loans.filter((l) => l.status === "pending");
+  const activeLoans  = loans.filter((l) => l.status !== "pending");
+
   return (
     <PermissionGuard permission="loans:read">
     <div className="space-y-6">
       <PageHeader title="Loan management" subtitle="Encode new loans and review the active loan ledger." />
       <LoanCreateSection token={token} onLoanCreated={handleLoanCreated} initialClientId={initialClientId} />
-      <ActiveLoanTable loans={loans} loading={loading} />
+      <PendingLoansSection token={token} loans={pendingLoans} onLoansChanged={handlePendingChanged} />
+      <ActiveLoanTable loans={activeLoans} loading={loading} />
     </div>
     </PermissionGuard>
   );
