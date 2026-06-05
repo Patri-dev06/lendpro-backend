@@ -113,7 +113,7 @@ export function SigBlock({ name, role }: { name: string; role: string }) {
     <div style={{ flex: "1 1 0", minWidth: 0, textAlign: "center", fontSize: 9 }}>
       <div style={{ height: 48 }} />
       <div style={{ borderTop: "1px solid #000", marginBottom: 4 }} />
-      <div style={{ fontWeight: "bold", fontSize: 10 }}>{name}</div>
+      {name && <div style={{ fontWeight: "bold", fontSize: 10 }}>{name}</div>}
       <div style={{ color: "#555" }}>{role}</div>
       <div style={{ marginTop: 6 }}>Date: _______________</div>
     </div>

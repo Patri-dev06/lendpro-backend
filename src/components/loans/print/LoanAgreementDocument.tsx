@@ -95,11 +95,11 @@ export const LoanAgreementDocument = React.forwardRef<HTMLDivElement, PrintDocum
         {/* Signatures */}
         <div style={{ display: "flex", gap: 40, marginTop: 48 }}>
           <SigBlock name={p.client.name}               role="Maker" />
-          <SigBlock name="___________________________" role="Co-Maker" />
-          <SigBlock name="___________________________" role="Manager / Authorized Representative" />
+          <SigBlock name="" role="Co-Maker" />
+          <SigBlock name="" role="Manager / Authorized Representative" />
         </div>
         <div style={{ display: "flex", gap: 40, marginTop: 40 }}>
-          <SigBlock name="___________________________" role="Spouse of Maker" />
+          <SigBlock name="" role="Spouse of Maker" />
           <div style={{ flex: 1 }} />
           <div style={{ flex: 1 }} />
         </div>

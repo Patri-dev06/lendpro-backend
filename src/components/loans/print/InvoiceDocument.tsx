@@ -120,7 +120,7 @@ export const InvoiceDocument = React.forwardRef<HTMLDivElement, PrintDocumentPro
 
         {/* Signatures */}
         <div style={{ display: "flex", gap: 40, marginTop: 56 }}>
-          <SigBlock name="___________________________" role="Approved By" />
+          <SigBlock name="" role="Approved By" />
           <SigBlock name={p.client.name}               role="Client Signature" />
         </div>
       </div>
