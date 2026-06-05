@@ -44,6 +44,7 @@ class LoanController extends Controller
         $data['holiday_count'] = $data['holiday_count'] ?? 0;
 
         $client = Client::findOrFail($data['client_id']);
+        $data['collector_id'] = $client->collector_id;
 
         $holidays = array_column(json_decode(Setting::get('holidays', '[]'), true) ?? [], 'date');
 
@@ -52,24 +53,12 @@ class LoanController extends Controller
         $data['due_date']         = Loan::computeDueDate($data['release_date'], $data['term_days'] + $data['holiday_count'], $holidays)->toDateString();
         $data['expected_end_date'] = $data['due_date'];
         $data['number']           = Loan::generateNumber();
-        $data['status']           = $client->type;
+        $data['status']           = 'pending';
 
-        $loan = DB::transaction(function () use ($data, $client, $holidays) {
+        $loan = DB::transaction(function () use ($data, $holidays) {
             $loan = Loan::create($data);
             $loan->generateSchedule($holidays);
-
-            $client->update(['status' => $data['status']]);
-
-            AuditLog::record('CREATE_LOAN', $loan->number, "Created {$data['loan_type']} for client #{$data['client_id']}");
-
-            $loanTypeLabel = ucfirst(str_replace('-', ' ', $data['loan_type']));
-            Notification::notify(
-                'loan_created',
-                'New Loan Released',
-                "{$loanTypeLabel} of ₱" . number_format($data['principal'], 2) . " released to {$client->name} ({$loan->number}).",
-                ['admin', 'manager', 'accounting_clerk']
-            );
-
+            AuditLog::record('CREATE_LOAN', $loan->number, "Created {$data['loan_type']} for client #{$data['client_id']} (pending release)");
             return $loan;
         });
 
@@ -89,7 +78,7 @@ class LoanController extends Controller
     public function update(Request $request, Loan $loan): JsonResponse
     {
         $data = $request->validate([
-            'status'          => 'sometimes|in:new,renew,overdue,past-due,paid',
+            'status'          => 'sometimes|in:new,renew,overdue,past-due,paid,pending',
             'current_balance' => 'sometimes|numeric|min:0',
             'collector_id'    => 'sometimes|exists:collectors,id',
             'remarks'         => 'nullable|string',
@@ -100,6 +89,75 @@ class LoanController extends Controller
         AuditLog::record('UPDATE_LOAN', $loan->number, "Updated loan {$loan->number}");
 
         return response()->json($loan->load(['client', 'collector']));
+    }
+
+    public function release(Loan $loan): JsonResponse
+    {
+        if ($loan->status !== 'pending') {
+            return response()->json(['message' => 'Only pending loans can be released.'], 422);
+        }
+
+        $client    = $loan->client;
+        $newStatus = $client->type;
+
+        DB::transaction(function () use ($loan, $client, $newStatus) {
+            $loan->update(['status' => $newStatus]);
+            $client->update(['status' => $newStatus]);
+
+            AuditLog::record('RELEASE_LOAN', $loan->number, "Released loan {$loan->number} to {$client->name}");
+
+            $loanTypeLabel = ucfirst(str_replace('-', ' ', $loan->loan_type));
+            Notification::notify(
+                'loan_released',
+                'New Loan Released',
+                "{$loanTypeLabel} of ₱" . number_format($loan->principal, 2) . " released to {$client->name} ({$loan->number}).",
+                ['admin', 'manager', 'accounting_clerk']
+            );
+        });
+
+        return response()->json($loan->fresh()->load(['client', 'collector', 'scheduleRows']));
+    }
+
+    public function reschedule(Request $request, Loan $loan): JsonResponse
+    {
+        if ($loan->status !== 'pending') {
+            return response()->json(['message' => 'Only pending loans can be rescheduled.'], 422);
+        }
+
+        $data = $request->validate([
+            'release_date' => 'required|date',
+        ]);
+
+        $holidays   = array_column(json_decode(Setting::get('holidays', '[]'), true) ?? [], 'date');
+        $newDueDate = Loan::computeDueDate($data['release_date'], $loan->term_days + $loan->holiday_count, $holidays)->toDateString();
+
+        DB::transaction(function () use ($loan, $data, $newDueDate, $holidays) {
+            $loan->update([
+                'release_date'      => $data['release_date'],
+                'due_date'          => $newDueDate,
+                'expected_end_date' => $newDueDate,
+            ]);
+            $loan->generateSchedule($holidays);
+            AuditLog::record('RESCHEDULE_LOAN', $loan->number, "Rescheduled loan {$loan->number} release to {$data['release_date']}");
+        });
+
+        return response()->json($loan->fresh()->load(['client', 'collector', 'scheduleRows']));
+    }
+
+    public function cancel(Loan $loan): JsonResponse
+    {
+        if ($loan->status !== 'pending') {
+            return response()->json(['message' => 'Only pending loans can be cancelled.'], 422);
+        }
+
+        $loanNumber = $loan->number;
+        DB::transaction(function () use ($loan, $loanNumber) {
+            $loan->scheduleRows()->delete();
+            $loan->delete();
+            AuditLog::record('CANCEL_LOAN', $loanNumber, "Cancelled and deleted pending loan {$loanNumber}");
+        });
+
+        return response()->json(['message' => 'Loan cancelled and deleted.']);
     }
 
     public function destroy(Loan $loan): JsonResponse
