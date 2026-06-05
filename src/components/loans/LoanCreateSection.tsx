@@ -10,7 +10,7 @@ import { Field } from "@/components/shared/Field";
 import { SumRow } from "@/components/shared/SumRow";
 import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { DateInput } from "@/components/shared/DateInput";
-import { formatPHP, formatDate, addCalendarDays } from "@/lib/format";
+import { formatPHP, formatDate, addDays } from "@/lib/format";
 import { LOAN_TYPE_LABELS, type LoanType } from "@/lib/loan-constants";
 import { calcInterest, calcServiceCharge, calcDailyPayment } from "@/lib/loan-calc";
 import { InvoiceDocument }       from "@/components/loans/print/InvoiceDocument";
@@ -141,7 +141,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
   const totalLoanAmount = principal + interest;
   const totalReceivable = totalLoanAmount;          // processing fee is deducted from release, not added to balance
   const amountToRelease = principal - sc;           // what the client actually receives
-  const dueDate = date ? addCalendarDays(date, termDays + holidayCount, holidays) : null;
+  const dueDate = date ? addDays(date, termDays + holidayCount) : null;
 
   function recalcDailyRaw(p: number, i: number, _s: number, t: number) {
     setDaily(calcDailyPayment(p + i, t));

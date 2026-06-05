@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DateInput } from "@/components/shared/DateInput";
-import { formatPHP, formatDate, addCalendarDays } from "@/lib/format";
+import { formatPHP, formatDate, addDays } from "@/lib/format";
 import { LOAN_TYPE_LABELS } from "@/lib/loan-constants";
 import { calcInterest, calcServiceCharge, calcDailyPayment } from "@/lib/loan-calc";
 import { apiRequest } from "@/lib/api";
@@ -407,7 +407,7 @@ function ReloanDialog({
   const sc              = calcServiceCharge(principal, scRate);
   const totalReceivable = principal + interest;
   const daily           = calcDailyPayment(totalReceivable, termDays);
-  const dueDate         = date ? addCalendarDays(date, termDays + holidayCount, holidays) : null;
+  const dueDate         = date ? addDays(date, termDays + holidayCount) : null;
 
   async function handleSubmit() {
     if (!token || principal <= 0) return;
