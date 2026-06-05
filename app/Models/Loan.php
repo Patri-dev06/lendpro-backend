@@ -67,8 +67,15 @@ class Loan extends Model
     public static function generateNumber(): string
     {
         $year = now()->year;
-        $last = static::whereYear('created_at', $year)->count();
-        return sprintf('LN-%d-%04d', $year, $last + 1);
+        $prefix = "LN-{$year}-";
+
+        $max = static::withTrashed()
+            ->where('number', 'like', $prefix . '%')
+            ->pluck('number')
+            ->map(fn($n) => (int) substr($n, strlen($prefix)))
+            ->max() ?? 0;
+
+        return sprintf('LN-%d-%04d', $year, $max + 1);
     }
 
     public static function computeDueDate(string $releaseDate, int $termDays, array $holidays = []): Carbon

@@ -153,7 +153,7 @@ class LoanController extends Controller
         $loanNumber = $loan->number;
         DB::transaction(function () use ($loan, $loanNumber) {
             $loan->scheduleRows()->delete();
-            $loan->delete();
+            $loan->forceDelete();
             AuditLog::record('CANCEL_LOAN', $loanNumber, "Cancelled and deleted pending loan {$loanNumber}");
         });
 
