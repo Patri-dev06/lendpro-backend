@@ -13,7 +13,7 @@ const WARN_BEFORE_MIN     = 2;
 
 export const Route = createFileRoute("/_app")({
   beforeLoad: () => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") throw redirect({ to: "/login" });
     const token = localStorage.getItem("bm_token");
     if (!token) throw redirect({ to: "/login" });
   },

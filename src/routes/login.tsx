@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { ShieldCheck, TrendingUp, LineChart, Banknote, Eye, EyeOff, Loader2, Clock } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useRole, ROLE_LABELS, type Role } from "@/lib/role-context";
 
 export const Route = createFileRoute("/login")({
+  beforeLoad: () => {
+    if (typeof window !== "undefined" && localStorage.getItem("bm_token")) {
+      throw redirect({ to: "/" });
+    }
+  },
   head: () => ({ meta: [{ title: "Sign in — BuenaMano" }] }),
   component: LoginPage,
 });
