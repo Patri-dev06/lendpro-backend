@@ -34,8 +34,8 @@ export const LoanAgreementDocument = React.forwardRef<HTMLDivElement, PrintDocum
           <Field label="Due Date"     value={fmtDate(p.dueDate)} />
         </FieldRow>
 
-        {/* Borrower Information */}
-        <SectionTitle>Borrower Information</SectionTitle>
+        {/* Maker Information */}
+        <SectionTitle>Maker Information</SectionTitle>
         <FieldRow>
           <Field label="Full Name"           value={p.client.name} />
           <Field label="Business / Store Name" value={p.client.store_name} />
@@ -72,7 +72,7 @@ export const LoanAgreementDocument = React.forwardRef<HTMLDivElement, PrintDocum
         <SectionTitle>Payment Terms</SectionTitle>
         <FieldRow>
           <Field label="Daily Payment" value={php(p.daily)} />
-          <Field label="Term of Loan"  value={`${p.termDays} days`} />
+          <Field label="Term of Loan"  value={{ 30: "1 Month", 45: "1.5 Months", 60: "2 Months" }[p.termDays] ?? `${p.termDays} days`} />
         </FieldRow>
         {p.remarks && (
           <FieldRow>
@@ -85,18 +85,23 @@ export const LoanAgreementDocument = React.forwardRef<HTMLDivElement, PrintDocum
           fontSize: 9, lineHeight: 1.6, color: "#555",
           border: "1px solid #ddd", padding: 8, borderRadius: 4, marginTop: 8,
         }}>
-          <strong>Terms &amp; Conditions:</strong> The borrower agrees to pay the daily payment
+          <strong>Terms &amp; Conditions:</strong> The maker agrees to pay the daily payment
           amount every day until the full balance is settled. Late payments beyond 6 days are
           subject to a monthly compound penalty of 8% (5% interest + 3% penalty fee) on the
-          outstanding balance. The borrower acknowledges receipt of the amount to release stated
+          outstanding balance. The maker acknowledges receipt of the amount to release stated
           above. This document constitutes a promissory note and is legally binding upon signing.
         </div>
 
         {/* Signatures */}
         <div style={{ display: "flex", gap: 40, marginTop: 48 }}>
-          <SigBlock name={p.client.name}               role="Signature of Borrower" />
-          <SigBlock name="___________________________" role="Co-Borrower / Guarantor (if any)" />
+          <SigBlock name={p.client.name}               role="Maker" />
+          <SigBlock name="___________________________" role="Spouse of Maker" />
           <SigBlock name="___________________________" role="Manager / Authorized Representative" />
+        </div>
+        <div style={{ display: "flex", gap: 40, marginTop: 40 }}>
+          <SigBlock name="___________________________" role="Co-Maker" />
+          <SigBlock name="___________________________" role="Spouse of Co-Maker" />
+          <SigBlock name="___________________________" role="" />
         </div>
       </div>
     );

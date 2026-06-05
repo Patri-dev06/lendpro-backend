@@ -133,6 +133,33 @@ function ClientDetail() {
     ? Math.round(100 - (activeLoan.current_balance / activeLoan.total_receivable) * 100)
     : 0;
 
+  // Merge actual payments with synthetic processing-fee rows (one per loan), sorted by date
+  type PaymentRow = { key: string; date: string; amount: number; prevBal: number | null; newBal: number | null; collector: string; remarks: string; isFee: boolean };
+  const paymentRows: PaymentRow[] = [
+    ...allLoans
+      .filter((l) => l.service_charge > 0)
+      .map((l) => ({
+        key:       `fee-${l.id}`,
+        date:      l.release_date,
+        amount:    l.service_charge,
+        prevBal:   null,
+        newBal:    null,
+        collector: "—",
+        remarks:   "Processing Fee",
+        isFee:     true,
+      })),
+    ...client.payments.map((p) => ({
+      key:       String(p.id),
+      date:      p.payment_date,
+      amount:    p.amount,
+      prevBal:   p.previous_balance,
+      newBal:    p.new_balance,
+      collector: p.collector?.name ?? "—",
+      remarks:   p.remarks ?? "—",
+      isFee:     false,
+    })),
+  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
   function handleReloanCreated() {
     setReloanOpen(false);
     navigate({ to: "/loans", search: { clientId: client!.id } });
@@ -285,20 +312,20 @@ function ClientDetail() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {client.payments.length === 0 ? (
+                {paymentRows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
                       No payments yet.
                     </TableCell>
                   </TableRow>
-                ) : client.payments.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="text-xs whitespace-nowrap">{formatDate(p.payment_date)}</TableCell>
+                ) : paymentRows.map((p) => (
+                  <TableRow key={p.key} className={p.isFee ? "bg-muted/30" : ""}>
+                    <TableCell className="text-xs whitespace-nowrap">{formatDate(p.date)}</TableCell>
                     <TableCell className="text-right num font-medium">{formatPHP(p.amount)}</TableCell>
-                    <TableCell className="text-right num text-muted-foreground">{formatPHP(p.previous_balance)}</TableCell>
-                    <TableCell className="text-right num">{formatPHP(p.new_balance)}</TableCell>
-                    <TableCell className="text-xs">{p.collector?.name ?? "—"}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{p.remarks ?? "—"}</TableCell>
+                    <TableCell className="text-right num text-muted-foreground">{p.prevBal !== null ? formatPHP(p.prevBal) : "—"}</TableCell>
+                    <TableCell className="text-right num">{p.newBal !== null ? formatPHP(p.newBal) : "—"}</TableCell>
+                    <TableCell className="text-xs">{p.collector}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{p.remarks}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -467,7 +494,9 @@ function ReloanDialog({
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {TERM_OPTIONS.map((t) => (
-                  <SelectItem key={t} value={String(t)}>{t} days</SelectItem>
+                  <SelectItem key={t} value={String(t)}>
+                    {{ 30: "1 Month", 45: "1.5 Months", 60: "2 Months" }[t] ?? `${t} days`}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>

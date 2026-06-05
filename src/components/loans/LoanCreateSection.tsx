@@ -67,6 +67,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
   const [loadingData, setLoadingData] = useState(true);
 
   const TERM_OPTIONS = [30, 45, 60] as const;
+  const termLabel = (days: number) => ({ 30: "1 Month", 45: "1.5 Months", 60: "2 Months" }[days] ?? `${days} days`);
 
   // Settings-driven defaults
   const [defaultScRate, setDefaultScRate] = useState(0);
@@ -319,7 +320,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
               <SelectContent>
                 {TERM_OPTIONS.map((t) => (
                   <SelectItem key={t} value={String(t)}>
-                    {t} days
+                    {termLabel(t)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -434,6 +435,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
           <div className="my-1 border-t border-primary-foreground/20" />
           <SumRow label="Total loan amount" value={formatPHP(totalLoanAmount)} bold />
           <SumRow label="Fees"           value={formatPHP(sc)} />
+          <SumRow label="Net (amount released)" value={formatPHP(amountToRelease)} />
           <div className="my-1 border-t border-primary-foreground/20" />
           <SumRow label="Daily payment"  value={formatPHP(daily)} bold />
         </dl>

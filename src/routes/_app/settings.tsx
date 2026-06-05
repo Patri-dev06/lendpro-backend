@@ -216,7 +216,7 @@ function SettingsPage() {
               <SelectContent>
                 {TERM_OPTIONS.map((t) => (
                   <SelectItem key={t} value={String(t)}>
-                    {t} days
+                    {{ 30: "1 Month", 45: "1.5 Months", 60: "2 Months" }[t] ?? `${t} days`}
                   </SelectItem>
                 ))}
               </SelectContent>

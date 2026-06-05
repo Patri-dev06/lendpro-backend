@@ -97,6 +97,14 @@ export const InvoiceDocument = React.forwardRef<HTMLDivElement, PrintDocumentPro
                 </td>
               </tr>
               <tr>
+                <td style={{ padding: "5px 8px 3px", color: "#555" }}>Net (Amount Released):</td>
+                <td style={{ padding: "5px 8px 3px", textAlign: "right" }}>PHP {num(p.principal - p.sc)}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: "5px 8px 3px", color: "#555" }}>Daily Payment:</td>
+                <td style={{ padding: "5px 8px 3px", textAlign: "right", fontWeight: "bold" }}>PHP {num(p.daily)}</td>
+              </tr>
+              <tr>
                 <td style={{ padding: "5px 8px 3px", color: "#555" }}>Due Date:</td>
                 <td style={{ padding: "5px 8px 3px", textAlign: "right" }}>{fmtDate(p.dueDate)}</td>
               </tr>
