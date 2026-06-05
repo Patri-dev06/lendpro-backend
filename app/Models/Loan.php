@@ -80,16 +80,8 @@ class Loan extends Model
 
     public static function computeDueDate(string $releaseDate, int $termDays, array $holidays = []): Carbon
     {
-        $holidaySet = array_flip($holidays);
-        $date = Carbon::parse($releaseDate);
-        $added = 0;
-        while ($added < $termDays) {
-            $date->addDay();
-            if (!$date->isSunday() && !isset($holidaySet[$date->toDateString()])) {
-                $added++;
-            }
-        }
-        return $date;
+        // Due date = release date + termDays calendar days (holidays already folded into termDays via holiday_count)
+        return Carbon::parse($releaseDate)->addDays($termDays);
     }
 
     public function generateSchedule(array $holidays = []): void
