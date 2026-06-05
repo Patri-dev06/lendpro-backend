@@ -104,6 +104,19 @@ class LoanController extends Controller
             $loan->update(['status' => $newStatus]);
             $client->update(['status' => $newStatus]);
 
+            if ($loan->service_charge > 0) {
+                \App\Models\Payment::create([
+                    'loan_id'          => $loan->id,
+                    'client_id'        => $loan->client_id,
+                    'collector_id'     => $loan->collector_id,
+                    'payment_date'     => $loan->release_date,
+                    'amount'           => $loan->service_charge,
+                    'previous_balance' => null,
+                    'new_balance'      => null,
+                    'remarks'          => 'Processing Fee',
+                ]);
+            }
+
             AuditLog::record('RELEASE_LOAN', $loan->number, "Released loan {$loan->number} to {$client->name}");
 
             $loanTypeLabel = ucfirst(str_replace('-', ' ', $loan->loan_type));
