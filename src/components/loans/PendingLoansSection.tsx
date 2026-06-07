@@ -1,12 +1,17 @@
 import { useState } from "react";
-import { CalendarClock, CheckCircle2, X } from "lucide-react";
+import { CalendarClock, CheckCircle2, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { DateInput } from "@/components/shared/DateInput";
 import { formatPHP, formatDate, addDays } from "@/lib/format";
+import { calcInterest, calcDailyPayment } from "@/lib/loan-calc";
+import { LOAN_TYPE_LABELS, type LoanType, TERM_OPTIONS } from "@/lib/loan-constants";
 
 // Parse any date format the API returns (ISO UTC, ISO+offset, or plain YYYY-MM-DD)
 // and display in local (Manila) timezone
@@ -25,19 +30,26 @@ interface Props {
 }
 
 export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
-  const [rescheduleTarget, setRescheduleTarget] = useState<ApiLoan | null>(null);
-  const [newReleaseDate, setNewReleaseDate] = useState("");
-  const [rescheduling, setRescheduling] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<ApiLoan | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<ApiLoan | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
-  if (loans.length === 0) return null;
+  // Edit pending loan state
+  const [editTarget, setEditTarget]             = useState<ApiLoan | null>(null);
+  const [editLoanType, setEditLoanType]         = useState<LoanType>("new-loan");
+  const [editPrincipal, setEditPrincipal]       = useState(0);
+  const [editInterest, setEditInterest]         = useState(0);
+  const [editSc, setEditSc]                     = useState(0);
+  const [editTermDays, setEditTermDays]         = useState(60);
+  const [editHolidayCount, setEditHolidayCount] = useState(0);
+  const [editDaily, setEditDaily]               = useState(0);
+  const [editDate, setEditDate]                 = useState("");
+  const [editRemarks, setEditRemarks]           = useState("");
+  const [editErrors, setEditErrors]             = useState<Record<string, string>>({});
+  const [editing, setEditing]                   = useState(false);
 
-  const previewDueDate = rescheduleTarget && newReleaseDate
-    ? addDays(newReleaseDate + "T00:00:00", rescheduleTarget.term_days + rescheduleTarget.holiday_count)
-    : null;
+  if (loans.length === 0) return null;
 
   async function handleConfirmRelease() {
     if (!confirmTarget || !token) return;
@@ -51,25 +63,6 @@ export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
       toast.error(e instanceof Error ? e.message : "Failed to release loan.");
     } finally {
       setConfirming(false);
-    }
-  }
-
-  async function handleReschedule() {
-    if (!rescheduleTarget || !newReleaseDate || !token) return;
-    setRescheduling(true);
-    try {
-      const updated = await apiRequest<ApiLoan>("PATCH", `loans/${rescheduleTarget.id}/reschedule`, {
-        token,
-        body: { release_date: newReleaseDate },
-      });
-      onLoansChanged([updated]);
-      toast.success(`Loan ${updated.number} rescheduled.`);
-      setRescheduleTarget(null);
-      setNewReleaseDate("");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to reschedule loan.");
-    } finally {
-      setRescheduling(false);
     }
   }
 
@@ -87,6 +80,73 @@ export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
       setCancelling(false);
     }
   }
+
+  function openEdit(loan: ApiLoan) {
+    setEditTarget(loan);
+    setEditLoanType(loan.loan_type as LoanType);
+    setEditPrincipal(loan.principal);
+    setEditInterest(loan.interest);
+    setEditSc(loan.service_charge);
+    setEditTermDays(loan.term_days);
+    setEditHolidayCount(loan.holiday_count);
+    setEditDaily(loan.daily_payment);
+    setEditDate(loan.release_date.slice(0, 10));
+    setEditRemarks(loan.remarks ?? "");
+    setEditErrors({});
+  }
+
+  function handleEditPrincipalChange(p: number) {
+    setEditPrincipal(p);
+    const autoInterest = calcInterest(p, editTermDays);
+    setEditInterest(autoInterest);
+    setEditDaily(calcDailyPayment(p + autoInterest, editTermDays));
+    setEditErrors((e) => ({ ...e, principal: "" }));
+  }
+
+  function handleEditTermChange(t: number) {
+    setEditTermDays(t);
+    const autoInterest = calcInterest(editPrincipal, t);
+    setEditInterest(autoInterest);
+    setEditDaily(calcDailyPayment(editPrincipal + autoInterest, t));
+  }
+
+  async function handleEdit() {
+    const errs: Record<string, string> = {};
+    if (editPrincipal <= 0) errs.principal = "Principal must be greater than 0.";
+    if (editSc < 0)         errs.sc        = "Processing fee cannot be negative.";
+    if (editDaily <= 0)     errs.daily     = "Daily payment must be greater than 0.";
+    if (!editDate)          errs.date      = "Release date is required.";
+    if (Object.keys(errs).length > 0) { setEditErrors(errs); return; }
+    if (!editTarget || !token) return;
+    setEditing(true);
+    try {
+      const updated = await apiRequest<ApiLoan>("PATCH", `loans/${editTarget.id}/edit-pending`, {
+        token,
+        body: {
+          loan_type:      editLoanType,
+          principal:      editPrincipal,
+          interest:       editInterest,
+          service_charge: editSc,
+          daily_payment:  editDaily,
+          term_days:      editTermDays,
+          holiday_count:  editHolidayCount,
+          release_date:   editDate,
+          remarks:        editRemarks || null,
+        },
+      });
+      onLoansChanged([updated]);
+      toast.success(`Loan ${updated.number} updated.`);
+      setEditTarget(null);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update loan.");
+    } finally {
+      setEditing(false);
+    }
+  }
+
+  const editDueDate = editDate
+    ? addDays(editDate + "T00:00:00", editTermDays + editHolidayCount)
+    : null;
 
   return (
     <>
@@ -119,7 +179,7 @@ export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
                 </div>
               </div>
 
-              <div className="flex shrink-0 gap-2">
+              <div className="flex shrink-0 flex-wrap gap-2">
                 <Button
                   size="sm"
                   variant="default"
@@ -133,13 +193,10 @@ export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
                   size="sm"
                   variant="outline"
                   className="h-8"
-                  onClick={() => {
-                    setRescheduleTarget(loan);
-                    setNewReleaseDate(loan.release_date);
-                  }}
+                  onClick={() => openEdit(loan)}
                 >
-                  <CalendarClock className="mr-1.5 h-3.5 w-3.5" />
-                  Reschedule
+                  <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                  Edit
                 </Button>
                 <Button
                   size="sm"
@@ -203,63 +260,6 @@ export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
         </DialogContent>
       </Dialog>
 
-      {/* Reschedule dialog */}
-      <Dialog
-        open={!!rescheduleTarget}
-        onOpenChange={(o) => { if (!o) { setRescheduleTarget(null); setNewReleaseDate(""); } }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reschedule Release Date</DialogTitle>
-          </DialogHeader>
-          {rescheduleTarget && (
-            <div className="space-y-4">
-              <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Client</span>
-                  <span className="font-medium">{rescheduleTarget.client.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Current Release Date</span>
-                  <span className="font-medium">{fmtApiDate(rescheduleTarget.release_date)}</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>New Release Date</Label>
-                <DateInput
-                  value={newReleaseDate}
-                  onChange={(e) => setNewReleaseDate(e.target.value)}
-                />
-              </div>
-
-              {previewDueDate && (
-                <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm dark:border-blue-900 dark:bg-blue-950/30">
-                  <span className="text-muted-foreground">New Due Date: </span>
-                  <span className="font-semibold">
-                    {previewDueDate.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => { setRescheduleTarget(null); setNewReleaseDate(""); }}
-              disabled={rescheduling}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleReschedule}
-              disabled={!newReleaseDate || rescheduling}
-            >
-              {rescheduling ? "Saving…" : "Save New Date"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Cancel confirmation dialog */}
       <Dialog open={!!cancelTarget} onOpenChange={(o) => !o && setCancelTarget(null)}>
@@ -296,6 +296,145 @@ export function PendingLoansSection({ token, loans, onLoansChanged }: Props) {
               disabled={cancelling}
             >
               {cancelling ? "Deleting…" : "Cancel Loan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit pending loan dialog */}
+      <Dialog open={!!editTarget} onOpenChange={(o) => !o && setEditTarget(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              Edit Pending Loan — {editTarget?.number} ({editTarget?.client.name})
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 py-2">
+            {/* Loan type */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Loan type</Label>
+              <Select value={editLoanType} onValueChange={(v) => setEditLoanType(v as LoanType)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.entries(LOAN_TYPE_LABELS) as [LoanType, string][]).map(([v, l]) => (
+                    <SelectItem key={v} value={v}>{l}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Principal */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Principal loan (₱)</Label>
+              {editErrors.principal && <p className="text-[11px] text-destructive">{editErrors.principal}</p>}
+              <Input
+                type="number" min={0}
+                value={editPrincipal || ""}
+                className={editErrors.principal ? "border-destructive" : ""}
+                onChange={(e) => handleEditPrincipalChange(Number(e.target.value) || 0)}
+              />
+            </div>
+
+            {/* Interest (auto-computed) */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Interest (₱) — auto-computed</Label>
+              <Input value={formatPHP(editInterest)} readOnly className="bg-muted/40 text-muted-foreground" />
+            </div>
+
+            {/* Term */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Term of loan</Label>
+              <Select value={String(editTermDays)} onValueChange={(v) => handleEditTermChange(Number(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TERM_OPTIONS.map((t) => (
+                    <SelectItem key={t} value={String(t)}>
+                      {{ 30: "1 Month", 45: "1.5 Months", 60: "2 Months" }[t] ?? `${t} days`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Holidays */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Holidays within term</Label>
+              <Select value={String(editHolidayCount)} onValueChange={(v) => setEditHolidayCount(Number(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[0, 1, 2, 3, 4, 5].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n === 0 ? "None" : `${n} holiday${n > 1 ? "s" : ""} (+${n} day${n > 1 ? "s" : ""})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Processing fee */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Processing fee (₱)</Label>
+              {editErrors.sc && <p className="text-[11px] text-destructive">{editErrors.sc}</p>}
+              <Input
+                type="number" min={0}
+                value={editSc}
+                className={editErrors.sc ? "border-destructive" : ""}
+                onChange={(e) => { setEditSc(Number(e.target.value) || 0); setEditErrors((e2) => ({ ...e2, sc: "" })); }}
+              />
+            </div>
+
+            {/* Daily payment */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Daily payment (₱)</Label>
+              {editErrors.daily && <p className="text-[11px] text-destructive">{editErrors.daily}</p>}
+              <Input
+                type="number" min={0}
+                value={editDaily || ""}
+                className={editErrors.daily ? "border-destructive" : ""}
+                onChange={(e) => { setEditDaily(Number(e.target.value) || 0); setEditErrors((e2) => ({ ...e2, daily: "" })); }}
+              />
+            </div>
+
+            {/* Release date */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Loan release date</Label>
+              {editErrors.date && <p className="text-[11px] text-destructive">{editErrors.date}</p>}
+              <DateInput
+                value={editDate}
+                error={!!editErrors.date}
+                onChange={(e) => { setEditDate(e.target.value); setEditErrors((e2) => ({ ...e2, date: "" })); }}
+              />
+            </div>
+
+            {/* Due date preview */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Due date (computed)</Label>
+              <Input
+                value={editDueDate ? editDueDate.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" }) : "—"}
+                readOnly
+                className="bg-muted/40 text-muted-foreground"
+              />
+            </div>
+
+            {/* Remarks */}
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label className="text-xs">Remarks (optional)</Label>
+              <Textarea
+                rows={2}
+                value={editRemarks}
+                onChange={(e) => setEditRemarks(e.target.value)}
+                placeholder="Any internal notes…"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTarget(null)} disabled={editing}>
+              Cancel
+            </Button>
+            <Button onClick={handleEdit} disabled={editing}>
+              {editing ? "Saving…" : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
