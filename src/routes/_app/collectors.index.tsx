@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Download, Plus, Pencil, Trash2, Loader2, Search, Phone, MapPin } from "lucide-react";
+import { Download, Plus, Pencil, Trash2, Loader2, Search, Phone, MapPin, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,7 @@ interface Collector {
   fb_messenger: string | null;
   email: string | null;
   drivers_license: string | null;
+  approval_status: string;
   assigned: number;
   expected: number;
   actual: number;
@@ -43,13 +44,16 @@ export const Route = createFileRoute("/_app/collectors/")({
 });
 
 function CollectorsPage() {
-  const { token } = useRole();
+  const { token, role } = useRole();
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [loading, setLoading]       = useState(true);
   const [q, setQ]                   = useState("");
   const [addOpen, setAddOpen]       = useState(false);
   const [editTarget, setEditTarget] = useState<Collector | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Collector | null>(null);
+  const [approvingId, setApprovingId]   = useState<number | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<Collector | null>(null);
+  const [rejecting, setRejecting]       = useState(false);
 
   const fetchCollectors = useCallback(async () => {
     if (!token) return;
@@ -64,6 +68,34 @@ function CollectorsPage() {
   }, [token]);
 
   useEffect(() => { fetchCollectors(); }, [fetchCollectors]);
+
+  async function handleApprove(c: Collector) {
+    setApprovingId(c.id);
+    try {
+      await apiRequest("POST", `collectors/${c.id}/approve`, { token: token ?? undefined });
+      toast.success(`${c.name} approved.`);
+      fetchCollectors();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to approve collector.");
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
+  async function handleReject() {
+    if (!rejectTarget || !token) return;
+    setRejecting(true);
+    try {
+      await apiRequest("POST", `collectors/${rejectTarget.id}/reject`, { token });
+      toast.success(`${rejectTarget.name} rejected and removed.`);
+      setRejectTarget(null);
+      fetchCollectors();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to reject collector.");
+    } finally {
+      setRejecting(false);
+    }
+  }
 
   function downloadCSV() {
     const today = new Date().toISOString().slice(0, 10);
@@ -94,6 +126,8 @@ function CollectorsPage() {
     }
   }
 
+  const pendingCount = collectors.filter((c) => c.approval_status === "pending_approval").length;
+
   const filtered = collectors.filter((c) =>
     !q || c.name.toLowerCase().includes(q.toLowerCase()) ||
     c.code.toLowerCase().includes(q.toLowerCase()) ||
@@ -118,6 +152,19 @@ function CollectorsPage() {
           </div>
         }
       />
+
+      {/* Pending approval banner — admin only */}
+      {role === "admin" && pendingCount > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+          <span className="font-medium text-amber-800 dark:text-amber-300">
+            {pendingCount} collector{pendingCount > 1 ? "s" : ""} pending approval
+          </span>
+          <span className="text-amber-600 dark:text-amber-500 text-xs">
+            Review and approve or reject duplicate registrations below.
+          </span>
+        </div>
+      )}
 
       <div className="relative max-w-xs">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -159,6 +206,11 @@ function CollectorsPage() {
                     >
                       {c.name}
                     </Link>
+                    {c.approval_status === "pending_approval" && (
+                      <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                        <AlertTriangle className="h-2.5 w-2.5" />Pending Approval
+                      </div>
+                    )}
                     {c.address && (
                       <div className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5">
                         <MapPin className="h-3 w-3 shrink-0" />
@@ -181,7 +233,29 @@ function CollectorsPage() {
                     {rate}%
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="flex items-center justify-end gap-1 flex-wrap">
+                      {role === "admin" && c.approval_status === "pending_approval" && (
+                        <>
+                          <Button
+                            variant="ghost" size="sm"
+                            className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
+                            onClick={() => handleApprove(c)}
+                            disabled={approvingId === c.id}
+                          >
+                            {approvingId === c.id
+                              ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                              : <CheckCircle2 className="mr-1 h-3.5 w-3.5" />}
+                            Approve
+                          </Button>
+                          <Button
+                            variant="ghost" size="sm"
+                            className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setRejectTarget(c)}
+                          >
+                            <XCircle className="mr-1 h-3.5 w-3.5" />Reject
+                          </Button>
+                        </>
+                      )}
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditTarget(c)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
@@ -226,6 +300,35 @@ function CollectorsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Reject collector confirmation */}
+      {rejectTarget && (
+        <Dialog open onOpenChange={(o) => { if (!o) setRejectTarget(null); }}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Reject Duplicate Collector</DialogTitle></DialogHeader>
+            <div className="space-y-2 text-sm">
+              <p>Permanently remove this collector registration? This cannot be undone.</p>
+              <div className="rounded-md border bg-muted/40 p-3 space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Name</span>
+                  <span className="font-medium">{rejectTarget.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Area</span>
+                  <span className="font-medium">{rejectTarget.area}</span>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRejectTarget(null)} disabled={rejecting}>Go Back</Button>
+              <Button variant="destructive" onClick={handleReject} disabled={rejecting}>
+                {rejecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Reject & Remove
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
     </PermissionGuard>
   );
@@ -311,13 +414,24 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
       const saved = editing
         ? await apiRequest<Collector>("PATCH", `collectors/${collector!.id}`, { token, body })
         : await apiRequest<Collector>("POST", "collectors", { token, body });
-      toast.success(editing ? "Collector updated." : `Collector added — ID: ${saved.code}`);
+
+      if (!editing && saved.approval_status === "pending_approval") {
+        toast.warning("Collector saved — pending approval", {
+          description: "A collector with the same name already exists. An Administrator must approve this registration.",
+        });
+      } else {
+        toast.success(editing ? "Collector updated." : `Collector added — ID: ${saved.code}`);
+      }
       onSaved(saved);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save.");
     } finally {
       setSaving(false);
     }
+  }
+
+  function clrErr(key: string) {
+    setErrors((x) => ({ ...x, [key]: "" }));
   }
 
   return (
@@ -334,15 +448,18 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 py-1">
 
-          {/* ── Personal Info ── */}
           <FF label="Full name" error={errors.name} full>
-            <Input value={name} onChange={(e) => { setName(e.target.value); clrErr("name"); }}
-              placeholder="Maria Santos" disabled={saving} className={errors.name ? "border-destructive" : ""} />
+            <Input value={name}
+              onChange={(e) => { setName(e.target.value.toUpperCase()); clrErr("name"); }}
+              placeholder="MARIA SANTOS" disabled={saving}
+              className={`uppercase ${errors.name ? "border-destructive" : ""}`} />
           </FF>
 
           <FF label="Area / Route" error={errors.area}>
-            <Input value={area} onChange={(e) => { setArea(e.target.value); clrErr("area"); }}
-              placeholder="Poblacion Zone 1" disabled={saving} className={errors.area ? "border-destructive" : ""} />
+            <Input value={area}
+              onChange={(e) => { setArea(e.target.value.toUpperCase()); clrErr("area"); }}
+              placeholder="POBLACION ZONE 1" disabled={saving}
+              className={`uppercase ${errors.area ? "border-destructive" : ""}`} />
           </FF>
 
           <FF label="Cellphone number" error={errors.phone}>
@@ -365,24 +482,32 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
           </FF>
 
           <FF label="Address" error={errors.address} full>
-            <Textarea value={address} onChange={(e) => { setAddress(e.target.value); clrErr("address"); }}
-              placeholder="House / Unit No., Street, Barangay, City, Province"
-              rows={2} disabled={saving} className={errors.address ? "border-destructive" : ""} />
+            <Textarea value={address}
+              onChange={(e) => { setAddress(e.target.value.toUpperCase()); clrErr("address"); }}
+              placeholder="HOUSE / UNIT NO., STREET, BARANGAY, CITY, PROVINCE"
+              rows={2} disabled={saving}
+              className={`uppercase ${errors.address ? "border-destructive" : ""}`} />
           </FF>
 
           <FF label="Mother's full name" error={errors.mothersName}>
-            <Input value={mothersName} onChange={(e) => { setMothersName(e.target.value); clrErr("mothersName"); }}
-              placeholder="Ana Santos" disabled={saving} className={errors.mothersName ? "border-destructive" : ""} />
+            <Input value={mothersName}
+              onChange={(e) => { setMothersName(e.target.value.toUpperCase()); clrErr("mothersName"); }}
+              placeholder="ANA SANTOS" disabled={saving}
+              className={`uppercase ${errors.mothersName ? "border-destructive" : ""}`} />
           </FF>
 
           <FF label="Father's full name" error={errors.fathersName}>
-            <Input value={fathersName} onChange={(e) => { setFathersName(e.target.value); clrErr("fathersName"); }}
-              placeholder="Jose Santos" disabled={saving} className={errors.fathersName ? "border-destructive" : ""} />
+            <Input value={fathersName}
+              onChange={(e) => { setFathersName(e.target.value.toUpperCase()); clrErr("fathersName"); }}
+              placeholder="JOSE SANTOS" disabled={saving}
+              className={`uppercase ${errors.fathersName ? "border-destructive" : ""}`} />
           </FF>
 
           <FF label="Place of birth" error={errors.placeOfBirth}>
-            <Input value={placeOfBirth} onChange={(e) => { setPlaceOfBirth(e.target.value); clrErr("placeOfBirth"); }}
-              placeholder="Buenavista, Agusan del Norte" disabled={saving} className={errors.placeOfBirth ? "border-destructive" : ""} />
+            <Input value={placeOfBirth}
+              onChange={(e) => { setPlaceOfBirth(e.target.value.toUpperCase()); clrErr("placeOfBirth"); }}
+              placeholder="BUENAVISTA, AGUSAN DEL NORTE" disabled={saving}
+              className={`uppercase ${errors.placeOfBirth ? "border-destructive" : ""}`} />
           </FF>
 
           <FF label="Date of birth" error={errors.dateOfBirth}>
@@ -396,7 +521,7 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
           </FF>
 
           <FF label="Driver's License No. (optional)">
-            <Input value={driversLicense} onChange={(e) => setDriversLicense(e.target.value)}
+            <Input value={driversLicense} onChange={(e) => setDriversLicense(e.target.value.toUpperCase())}
               placeholder="N01-00-000000" disabled={saving} className="uppercase" />
           </FF>
 
@@ -412,10 +537,6 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
       </DialogContent>
     </Dialog>
   );
-
-  function clrErr(key: string) {
-    setErrors((x) => ({ ...x, [key]: "" }));
-  }
 }
 
 function FF({ label, error, full, children }: { label: string; error?: string; full?: boolean; children: React.ReactNode }) {

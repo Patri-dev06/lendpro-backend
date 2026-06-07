@@ -512,18 +512,18 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
         <Field label="First name" error={errors.firstName}>
-          <Input value={firstName} onChange={(e) => { setFirstName(e.target.value); setErrors((p) => ({ ...p, firstName: "" })); }}
-            placeholder="Juan" disabled={loading} className={errors.firstName ? "border-destructive" : ""} />
+          <Input value={firstName} onChange={(e) => { setFirstName(e.target.value.toUpperCase()); setErrors((p) => ({ ...p, firstName: "" })); }}
+            placeholder="JUAN" disabled={loading} className={errors.firstName ? "border-destructive uppercase" : "uppercase"} />
         </Field>
 
         <Field label="Last name / Surname" error={errors.lastName}>
-          <Input value={lastName} onChange={(e) => { setLastName(e.target.value); setErrors((p) => ({ ...p, lastName: "" })); }}
-            placeholder="Dela Cruz" disabled={loading} className={errors.lastName ? "border-destructive" : ""} />
+          <Input value={lastName} onChange={(e) => { setLastName(e.target.value.toUpperCase()); setErrors((p) => ({ ...p, lastName: "" })); }}
+            placeholder="DELA CRUZ" disabled={loading} className={errors.lastName ? "border-destructive uppercase" : "uppercase"} />
         </Field>
 
         <Field label="Middle name (optional)" full>
-          <Input value={middleName} onChange={(e) => setMiddleName(e.target.value)}
-            placeholder="Santos" disabled={loading} />
+          <Input value={middleName} onChange={(e) => setMiddleName(e.target.value.toUpperCase())}
+            placeholder="SANTOS" disabled={loading} className="uppercase" />
         </Field>
 
         <Field label="Cellphone number" error={errors.phone}>
@@ -541,8 +541,8 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
         </Field>
 
         <Field label="Store / Business name" error={errors.storeName}>
-          <Input value={storeName} onChange={(e) => { setStoreName(e.target.value); setErrors((p) => ({ ...p, storeName: "" })); }}
-            placeholder="Juan Sari-Sari Store" disabled={loading} className={errors.storeName ? "border-destructive" : ""} />
+          <Input value={storeName} onChange={(e) => { setStoreName(e.target.value.toUpperCase()); setErrors((p) => ({ ...p, storeName: "" })); }}
+            placeholder="JUAN SARI-SARI STORE" disabled={loading} className={errors.storeName ? "border-destructive uppercase" : "uppercase"} />
         </Field>
 
         <Field label="Email address (optional)" error={errors.email}>
@@ -762,18 +762,18 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
         <Field label="First name" error={errors.firstName}>
-          <Input value={firstName} onChange={(e) => { setFirstName(e.target.value); setErrors((p) => ({ ...p, firstName: "" })); }}
-            placeholder="Juan" disabled={loading} className={errors.firstName ? "border-destructive" : ""} />
+          <Input value={firstName} onChange={(e) => { setFirstName(e.target.value.toUpperCase()); setErrors((p) => ({ ...p, firstName: "" })); }}
+            placeholder="JUAN" disabled={loading} className={errors.firstName ? "border-destructive uppercase" : "uppercase"} />
         </Field>
 
         <Field label="Last name / Surname" error={errors.lastName}>
-          <Input value={lastName} onChange={(e) => { setLastName(e.target.value); setErrors((p) => ({ ...p, lastName: "" })); }}
-            placeholder="Dela Cruz" disabled={loading} className={errors.lastName ? "border-destructive" : ""} />
+          <Input value={lastName} onChange={(e) => { setLastName(e.target.value.toUpperCase()); setErrors((p) => ({ ...p, lastName: "" })); }}
+            placeholder="DELA CRUZ" disabled={loading} className={errors.lastName ? "border-destructive uppercase" : "uppercase"} />
         </Field>
 
         <Field label="Middle name (optional)" full>
-          <Input value={middleName} onChange={(e) => setMiddleName(e.target.value)}
-            placeholder="Santos" disabled={loading} />
+          <Input value={middleName} onChange={(e) => setMiddleName(e.target.value.toUpperCase())}
+            placeholder="SANTOS" disabled={loading} className="uppercase" />
         </Field>
 
         <Field label="Cellphone number" error={errors.phone}>
@@ -791,8 +791,8 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
         </Field>
 
         <Field label="Store / Business name" error={errors.storeName}>
-          <Input value={storeName} onChange={(e) => { setStoreName(e.target.value); setErrors((p) => ({ ...p, storeName: "" })); }}
-            placeholder="Juan Sari-Sari Store" disabled={loading} className={errors.storeName ? "border-destructive" : ""} />
+          <Input value={storeName} onChange={(e) => { setStoreName(e.target.value.toUpperCase()); setErrors((p) => ({ ...p, storeName: "" })); }}
+            placeholder="JUAN SARI-SARI STORE" disabled={loading} className={errors.storeName ? "border-destructive uppercase" : "uppercase"} />
         </Field>
 
         <Field label="Email address (optional)" error={errors.email}>
