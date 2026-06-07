@@ -19,16 +19,25 @@ class CollectorController extends Controller
             $todayActual = $c->payments->filter(fn ($p) => substr((string) $p->payment_date, 0, 10) === $todayStr)->sum('amount');
 
             return [
-                'id'       => $c->id,
-                'name'     => $c->name,
-                'code'     => $c->code,
-                'area'     => $c->area,
-                'assigned' => $c->clients->count(),
-                'expected' => (float) $activeLoans->sum('daily_payment'),
-                'actual'   => (float) $todayActual,
-                'missed'   => (int) $activeLoans->where('status', 'overdue')->count(),
-                'overdue'  => (int) $activeLoans->where('status', 'overdue')->count(),
-                'past_due' => (int) $activeLoans->where('status', 'past-due')->count(),
+                'id'              => $c->id,
+                'name'            => $c->name,
+                'code'            => $c->code,
+                'area'            => $c->area,
+                'phone'           => $c->phone,
+                'address'         => $c->address,
+                'mothers_name'    => $c->mothers_name,
+                'fathers_name'    => $c->fathers_name,
+                'place_of_birth'  => $c->place_of_birth,
+                'date_of_birth'   => $c->date_of_birth,
+                'fb_messenger'    => $c->fb_messenger,
+                'email'           => $c->email,
+                'drivers_license' => $c->drivers_license,
+                'assigned'        => $c->clients->count(),
+                'expected'        => (float) $activeLoans->sum('daily_payment'),
+                'actual'          => (float) $todayActual,
+                'missed'          => (int) $activeLoans->where('status', 'overdue')->count(),
+                'overdue'         => (int) $activeLoans->where('status', 'overdue')->count(),
+                'past_due'        => (int) $activeLoans->where('status', 'past-due')->count(),
             ];
         });
 
@@ -38,12 +47,24 @@ class CollectorController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'name' => 'required|string|max:255',
-            'code' => 'required|string|max:50|unique:collectors',
-            'area' => 'required|string|max:255',
+            'name'            => 'required|string|max:255',
+            'area'            => 'required|string|max:255',
+            'phone'           => 'required|string|max:20',
+            'address'         => 'required|string',
+            'mothers_name'    => 'required|string|max:255',
+            'fathers_name'    => 'required|string|max:255',
+            'place_of_birth'  => 'required|string|max:255',
+            'date_of_birth'   => 'required|date',
+            'fb_messenger'    => 'nullable|string|max:255',
+            'email'           => 'nullable|email|max:255',
+            'drivers_license' => 'nullable|string|max:100',
         ]);
 
-        $collector = Collector::create($data);
+        // Auto-generate code using a temp placeholder, then set it from the real ID
+        $collector = Collector::create(array_merge($data, ['code' => 'COLL-TEMP']));
+        $collector->update(['code' => 'COLL-' . str_pad($collector->id, 4, '0', STR_PAD_LEFT)]);
+        $collector->refresh();
+
         AuditLog::record('CREATE_COLLECTOR', $collector->code, "Created collector {$collector->name}");
 
         return response()->json($collector, 201);
@@ -101,6 +122,15 @@ class CollectorController extends Controller
             'name'             => $collector->name,
             'code'             => $collector->code,
             'area'             => $collector->area,
+            'phone'            => $collector->phone,
+            'address'          => $collector->address,
+            'mothers_name'     => $collector->mothers_name,
+            'fathers_name'     => $collector->fathers_name,
+            'place_of_birth'   => $collector->place_of_birth,
+            'date_of_birth'    => $collector->date_of_birth,
+            'fb_messenger'     => $collector->fb_messenger,
+            'email'            => $collector->email,
+            'drivers_license'  => $collector->drivers_license,
             'assigned'         => $collector->clients->count(),
             'expected_daily'   => round($expectedDaily, 2),
             'expected_month'   => round($expectedDaily * 26, 2),
@@ -118,9 +148,17 @@ class CollectorController extends Controller
     public function update(Request $request, Collector $collector): JsonResponse
     {
         $data = $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'code' => 'sometimes|string|max:50|unique:collectors,code,' . $collector->id,
-            'area' => 'sometimes|string|max:255',
+            'name'            => 'sometimes|string|max:255',
+            'area'            => 'sometimes|string|max:255',
+            'phone'           => 'nullable|string|max:20',
+            'address'         => 'nullable|string',
+            'mothers_name'    => 'nullable|string|max:255',
+            'fathers_name'    => 'nullable|string|max:255',
+            'place_of_birth'  => 'nullable|string|max:255',
+            'date_of_birth'   => 'nullable|date',
+            'fb_messenger'    => 'nullable|string|max:255',
+            'email'           => 'nullable|email|max:255',
+            'drivers_license' => 'nullable|string|max:100',
         ]);
 
         $collector->update($data);

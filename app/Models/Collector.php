@@ -7,7 +7,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Collector extends Model
 {
-    protected $fillable = ['name', 'code', 'area'];
+    protected $fillable = [
+        'name', 'code', 'area',
+        'phone', 'address', 'mothers_name', 'fathers_name',
+        'place_of_birth', 'date_of_birth', 'fb_messenger',
+        'email', 'drivers_license',
+    ];
 
     public function clients(): HasMany
     {
