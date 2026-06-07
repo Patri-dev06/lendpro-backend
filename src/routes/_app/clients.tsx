@@ -70,6 +70,9 @@ function ClientsPage() {
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState(initialQ);
+
+  // Sync local search state when the URL search param changes (e.g. from TopBar)
+  useEffect(() => { setQ(initialQ); }, [initialQ]);
   const [type, setType] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [collectorFilter, setCollectorFilter] = useState("all");
