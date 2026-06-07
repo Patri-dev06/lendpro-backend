@@ -86,18 +86,15 @@ class Loan extends Model
 
     public function generateSchedule(array $holidays = []): void
     {
-        $holidaySet = array_flip($holidays);
         $this->scheduleRows()->delete();
-        $date = Carbon::parse($this->release_date);
+        $date    = Carbon::parse($this->release_date);
         $balance = $this->total_receivable;
-        $rows = [];
+        $rows    = [];
 
         for ($i = 0; $i < $this->term_days; $i++) {
-            do {
-                $date->addDay();
-            } while ($date->isSunday() || isset($holidaySet[$date->toDateString()]));
+            $date->addDay();
 
-            $prev = $balance;
+            $prev    = $balance;
             $balance = max(0, $balance - $this->daily_payment);
 
             $rows[] = [
