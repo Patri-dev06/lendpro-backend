@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Sparkles, Printer, FileText, ClipboardList, Loader2 } from "lucide-react";
+import { Sparkles, Printer, FileText, ClipboardList, Loader2, AlertTriangle } from "lucide-react";
 import { useReactToPrint } from "react-to-print";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,8 @@ interface ApiClient {
   email: string | null;
   type: string;
   status: string;
+  has_outstanding_loan: boolean;
+  approval_status: string;
 }
 
 export interface ApiLoan {
@@ -392,6 +394,24 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
           <LoanAgreementDocument ref={loanFormRef} {...printParams} />
         </div>
 
+        {/* Warnings */}
+        {selectedClient?.has_outstanding_loan && (
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              <strong>{selectedClient.name}</strong> already has an outstanding loan. Creating another loan may cause collection conflicts.
+            </span>
+          </div>
+        )}
+        {selectedClient?.approval_status === "pending_approval" && (
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-400/40 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              <strong>{selectedClient.name}</strong> is pending Administrator approval. You cannot create a loan until this client is approved.
+            </span>
+          </div>
+        )}
+
         <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
           <Button variant="outline" onClick={() => handlePrintTILA()} disabled={!canPrint}>
             <FileText className="mr-1.5 h-4 w-4" />Print TILA
@@ -405,7 +425,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
           <Button
             className="bg-primary text-primary-foreground hover:bg-primary-glow"
             onClick={handleCreate}
-            disabled={saving}
+            disabled={saving || selectedClient?.approval_status === "pending_approval"}
           >
             {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}
             {saving ? "Creating…" : "Create loan & generate schedule"}

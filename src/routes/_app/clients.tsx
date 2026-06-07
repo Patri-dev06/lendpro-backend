@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Eye, Mail, MailCheck, Loader2, FileText, Pencil, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Plus, Search, Eye, Mail, MailCheck, Loader2, FileText, Pencil, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { StatusBadge } from "@/components/finance/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -21,9 +21,13 @@ import { PermissionGuard } from "@/components/shared/AccessRestricted";
 /* ---------- Types ---------- */
 interface Collector { id: number; name: string; code: string; area: string; }
 interface Client {
-  id: number; number: string; name: string; store_name: string;
+  id: number; number: string; name: string;
+  first_name: string | null; middle_name: string | null; last_name: string | null;
+  store_name: string;
   address: string; phone: string; email: string | null;
-  type: string; status: string; collector_id: number;
+  type: string; status: string; approval_status: string;
+  has_outstanding_loan: boolean;
+  collector_id: number;
   latitude: number | null; longitude: number | null;
   created_at: string;
   collector?: Collector;
@@ -63,13 +67,16 @@ export const Route = createFileRoute("/_app/clients")({
 
 /* ---------- Page ---------- */
 function ClientsPage() {
-  const { token } = useRole();
+  const { token, role } = useRole();
   const navigate = useNavigate();
   const { q: initialQ } = Route.useSearch();
   const [clients, setClients] = useState<Client[]>([]);
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState(initialQ);
+  const [approvingId, setApprovingId]   = useState<number | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<Client | null>(null);
+  const [rejecting, setRejecting]       = useState(false);
 
   // Sync local search state when the URL search param changes (e.g. from TopBar)
   useEffect(() => { setQ(initialQ); }, [initialQ]);
@@ -99,6 +106,36 @@ function ClientsPage() {
   }, [token]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  async function handleApprove(client: Client) {
+    setApprovingId(client.id);
+    try {
+      await apiRequest("POST", `clients/${client.id}/approve`, { token: token ?? undefined });
+      toast.success(`${client.name} approved.`);
+      fetchData();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to approve client.");
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
+  async function handleReject() {
+    if (!rejectTarget || !token) return;
+    setRejecting(true);
+    try {
+      await apiRequest("POST", `clients/${rejectTarget.id}/reject`, { token });
+      toast.success(`${rejectTarget.name} rejected and removed.`);
+      setRejectTarget(null);
+      fetchData();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to reject client.");
+    } finally {
+      setRejecting(false);
+    }
+  }
+
+  const pendingCount = clients.filter((c) => c.approval_status === "pending_approval").length;
 
   const filtered = clients.filter((c) =>
     (type === "all" || c.type === type) &&
@@ -144,6 +181,19 @@ function ClientsPage() {
           </div>
         }
       />
+
+      {/* Pending approval banner — admin only */}
+      {role === "admin" && pendingCount > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+          <span className="font-medium text-amber-800 dark:text-amber-300">
+            {pendingCount} client{pendingCount > 1 ? "s" : ""} pending approval
+          </span>
+          <span className="text-amber-600 dark:text-amber-500 text-xs">
+            Review and approve or reject duplicate registrations below.
+          </span>
+        </div>
+      )}
 
       <div className="rounded-2xl border bg-card shadow-sm">
         <div className="flex flex-wrap items-center gap-2 border-b p-4">
@@ -234,12 +284,43 @@ function ClientsPage() {
                     <TableCell className="text-xs">{c.phone}</TableCell>
                     <TableCell><StatusBadge status={c.type} /></TableCell>
                     <TableCell className="text-muted-foreground">{c.collector?.name ?? "—"}</TableCell>
-                    <TableCell><StatusBadge status={c.status} /></TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        <StatusBadge status={c.status} />
+                        {c.approval_status === "pending_approval" && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                            <AlertTriangle className="h-2.5 w-2.5" />Pending Approval
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {new Date(c.created_at).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-1 flex-wrap">
+                        {role === "admin" && c.approval_status === "pending_approval" && (
+                          <>
+                            <Button
+                              variant="ghost" size="sm"
+                              className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
+                              onClick={() => handleApprove(c)}
+                              disabled={approvingId === c.id}
+                            >
+                              {approvingId === c.id
+                                ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                                : <CheckCircle2 className="mr-1 h-3.5 w-3.5" />}
+                              Approve
+                            </Button>
+                            <Button
+                              variant="ghost" size="sm"
+                              className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => setRejectTarget(c)}
+                            >
+                              <XCircle className="mr-1 h-3.5 w-3.5" />Reject
+                            </Button>
+                          </>
+                        )}
                         {c.email && (
                           <Button variant="ghost" size="sm" className="h-8 px-2 text-info hover:text-info"
                             onClick={() => setEmailClient(c)}>
@@ -296,6 +377,35 @@ function ClientsPage() {
       {emailClient && (
         <EmailDialog client={emailClient} onClose={() => setEmailClient(null)} />
       )}
+
+      {/* Reject confirmation dialog */}
+      {rejectTarget && (
+        <Dialog open onOpenChange={(o) => { if (!o) setRejectTarget(null); }}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Reject Duplicate Client</DialogTitle></DialogHeader>
+            <div className="space-y-2 text-sm">
+              <p>Permanently remove this client registration? This cannot be undone.</p>
+              <div className="rounded-md border bg-muted/40 p-3 space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Name</span>
+                  <span className="font-medium">{rejectTarget.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Store</span>
+                  <span className="font-medium">{rejectTarget.store_name}</span>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRejectTarget(null)} disabled={rejecting}>Go Back</Button>
+              <Button variant="destructive" onClick={handleReject} disabled={rejecting}>
+                {rejecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Reject & Remove
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
     </PermissionGuard>
   );
@@ -311,8 +421,10 @@ interface AddClientDialogProps {
 }
 
 function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onCancel }: AddClientDialogProps) {
-  const [name, setName]           = useState("");
-  const [phone, setPhone]         = useState("");
+  const [firstName, setFirstName]   = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [lastName, setLastName]     = useState("");
+  const [phone, setPhone]           = useState("");
   const [storeName, setStoreName] = useState("");
   const [email, setEmail]         = useState("");
   const [province, setProvince]       = useState("");
@@ -328,7 +440,8 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!name.trim())      e.name        = "Client name is required.";
+    if (!firstName.trim()) e.firstName   = "First name is required.";
+    if (!lastName.trim())  e.lastName    = "Last name / Surname is required.";
     if (!phone.trim())                          e.phone = "Cellphone number is required.";
     else if (phone.replace(/\D/g, "").length !== 10) e.phone = "Enter 10 digits after +63 (e.g. 917 000 0000).";
     if (!storeName.trim()) e.storeName   = "Store name is required.";
@@ -361,7 +474,9 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
       const newClient = await apiRequest<Client>("POST", "clients", {
         token,
         body: {
-          name:         name.trim(),
+          first_name:   firstName.trim(),
+          middle_name:  middleName.trim() || null,
+          last_name:    lastName.trim(),
           phone:        localPhone,
           store_name:   storeName.trim(),
           email:        email.trim() || null,
@@ -372,7 +487,13 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
           longitude:    longitude ? Number(longitude) : null,
         },
       });
-      toast.success("Client saved!", { description: `${name.trim()} has been added successfully.` });
+      if (newClient.approval_status === "pending_approval") {
+        toast.warning("Client saved — pending approval", {
+          description: "A duplicate name or store was detected. An Administrator must approve this client before they can be assigned a loan.",
+        });
+      } else {
+        toast.success("Client saved!", { description: `${newClient.name} has been added successfully.` });
+      }
       if (goToLoan) {
         onSavedAndCreateLoan(newClient.id);
       } else {
@@ -390,9 +511,19 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
       <DialogHeader><DialogTitle>Add new client</DialogTitle></DialogHeader>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
-        <Field label="Client name" error={errors.name}>
-          <Input value={name} onChange={(e) => { setName(e.target.value); setErrors((p) => ({ ...p, name: "" })); }}
-            placeholder="Juan Dela Cruz" disabled={loading} className={errors.name ? "border-destructive" : ""} />
+        <Field label="First name" error={errors.firstName}>
+          <Input value={firstName} onChange={(e) => { setFirstName(e.target.value); setErrors((p) => ({ ...p, firstName: "" })); }}
+            placeholder="Juan" disabled={loading} className={errors.firstName ? "border-destructive" : ""} />
+        </Field>
+
+        <Field label="Last name / Surname" error={errors.lastName}>
+          <Input value={lastName} onChange={(e) => { setLastName(e.target.value); setErrors((p) => ({ ...p, lastName: "" })); }}
+            placeholder="Dela Cruz" disabled={loading} className={errors.lastName ? "border-destructive" : ""} />
+        </Field>
+
+        <Field label="Middle name (optional)" full>
+          <Input value={middleName} onChange={(e) => setMiddleName(e.target.value)}
+            placeholder="Santos" disabled={loading} />
         </Field>
 
         <Field label="Cellphone number" error={errors.phone}>
@@ -552,8 +683,10 @@ function parseAddress(addr: string) {
 
 function EditClientDialog({ client, collectors, token, onSaved, onCancel }: EditClientDialogProps) {
   const parsed = parseAddress(client.address);
-  const [name, setName]           = useState(client.name);
-  const [phone, setPhone]         = useState(client.phone.replace(/^\+?63/, "").replace(/^0/, ""));
+  const [firstName, setFirstName]   = useState(client.first_name ?? client.name.split(" ")[0]);
+  const [middleName, setMiddleName] = useState(client.middle_name ?? "");
+  const [lastName, setLastName]     = useState(client.last_name ?? client.name.split(" ").slice(1).join(" "));
+  const [phone, setPhone]           = useState(client.phone.replace(/^\+?63/, "").replace(/^0/, ""));
   const [storeName, setStoreName] = useState(client.store_name);
   const [email, setEmail]         = useState(client.email ?? "");
   const [province, setProvince]       = useState(parsed.province);
@@ -570,7 +703,8 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!name.trim())      e.name      = "Client name is required.";
+    if (!firstName.trim()) e.firstName = "First name is required.";
+    if (!lastName.trim())  e.lastName  = "Last name / Surname is required.";
     if (!phone.trim())     e.phone     = "Cellphone number is required.";
     else if (phone.replace(/\D/g, "").length !== 10) e.phone = "Enter 10 digits after +63.";
     if (!storeName.trim()) e.storeName = "Store name is required.";
@@ -599,7 +733,9 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
       await apiRequest("PATCH", `clients/${client.id}`, {
         token,
         body: {
-          name:         name.trim(),
+          first_name:   firstName.trim(),
+          middle_name:  middleName.trim() || null,
+          last_name:    lastName.trim(),
           phone:        localPhone,
           store_name:   storeName.trim(),
           email:        email.trim() || null,
@@ -611,7 +747,7 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
           longitude:    longitude ? Number(longitude) : null,
         },
       });
-      toast.success("Client updated!", { description: `${name.trim()} has been updated.` });
+      toast.success("Client updated!", { description: `${[firstName.trim(), lastName.trim()].join(" ")} has been updated.` });
       onSaved();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update client.");
@@ -625,9 +761,19 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
       <DialogHeader><DialogTitle>Edit client — {client.number}</DialogTitle></DialogHeader>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
-        <Field label="Client name" error={errors.name}>
-          <Input value={name} onChange={(e) => { setName(e.target.value); setErrors((p) => ({ ...p, name: "" })); }}
-            placeholder="Juan Dela Cruz" disabled={loading} className={errors.name ? "border-destructive" : ""} />
+        <Field label="First name" error={errors.firstName}>
+          <Input value={firstName} onChange={(e) => { setFirstName(e.target.value); setErrors((p) => ({ ...p, firstName: "" })); }}
+            placeholder="Juan" disabled={loading} className={errors.firstName ? "border-destructive" : ""} />
+        </Field>
+
+        <Field label="Last name / Surname" error={errors.lastName}>
+          <Input value={lastName} onChange={(e) => { setLastName(e.target.value); setErrors((p) => ({ ...p, lastName: "" })); }}
+            placeholder="Dela Cruz" disabled={loading} className={errors.lastName ? "border-destructive" : ""} />
+        </Field>
+
+        <Field label="Middle name (optional)" full>
+          <Input value={middleName} onChange={(e) => setMiddleName(e.target.value)}
+            placeholder="Santos" disabled={loading} />
         </Field>
 
         <Field label="Cellphone number" error={errors.phone}>
