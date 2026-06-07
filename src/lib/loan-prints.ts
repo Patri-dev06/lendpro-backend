@@ -80,11 +80,16 @@ export function printLedger(loan: PrintLoan) {
   </thead>
   <tbody>
     ${Array.from({ length: loan.term_days }, (_, i) => {
-      const paidDays = Math.round((loan.total_receivable - loan.current_balance) / loan.daily_payment);
-      const isPaid   = i < paidDays;
-      const bal      = Math.max(0, loan.total_receivable - (Math.min(i + 1, paidDays) * loan.daily_payment));
+      const paidDays  = loan.daily_payment > 0
+        ? Math.round((loan.total_receivable - loan.current_balance) / loan.daily_payment)
+        : 0;
+      const isPaid    = i < paidDays;
+      const bal       = Math.max(0, loan.total_receivable - (Math.min(i + 1, paidDays) * loan.daily_payment));
+      const rowDate   = new Date(loan.release_date + "T00:00:00");
+      rowDate.setDate(rowDate.getDate() + i + 1);
+      const dateStr   = rowDate.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
       return `<tr>
-        <td>${i + 1}</td><td></td>
+        <td>${i + 1}</td><td>${dateStr}</td>
         <td class="right">${formatPHP(loan.daily_payment)}</td>
         <td class="right ${isPaid ? "paid" : ""}">${isPaid ? formatPHP(loan.daily_payment) : "—"}</td>
         <td class="right">${formatPHP(bal)}</td>
