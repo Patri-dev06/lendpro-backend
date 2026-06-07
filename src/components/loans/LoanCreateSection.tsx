@@ -141,6 +141,13 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
 
   useEffect(() => { fetchDropdowns(); }, [fetchDropdowns]);
 
+  // Auto-derive loan type from the selected client's type field
+  useEffect(() => {
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return;
+    setLoanType(client.type === "renew" ? "reloan" : "new-loan");
+  }, [clientId, clients]);
+
   const totalLoanAmount = principal + interest;
   const totalReceivable = totalLoanAmount;          // processing fee is deducted from release, not added to balance
   const amountToRelease = principal - sc;           // what the client actually receives
@@ -253,14 +260,29 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Label className="text-xs shrink-0">Loan type</Label>
-            <Select value={loanType} onValueChange={(v) => setLoanType(v as LoanType)}>
+            <Select
+              value={loanType}
+              onValueChange={(v) => setLoanType(v as LoanType)}
+              disabled={!!selectedClient}
+            >
               <SelectTrigger className="h-8 w-44 text-sm font-semibold"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(Object.entries(LOAN_TYPE_LABELS) as [LoanType, string][]).map(([v, l]) => (
-                  <SelectItem key={v} value={v}>{l}</SelectItem>
-                ))}
+                {(Object.entries(LOAN_TYPE_LABELS) as [LoanType, string][])
+                  .filter(([v]) => v !== "reconstruct")
+                  .filter(([v]) => {
+                    if (!selectedClient) return true;
+                    return selectedClient.type === "renew" ? v === "reloan" : v === "new-loan";
+                  })
+                  .map(([v, l]) => (
+                    <SelectItem key={v} value={v}>{l}</SelectItem>
+                  ))}
               </SelectContent>
             </Select>
+            {selectedClient && (
+              <span className="text-[11px] text-muted-foreground">
+                auto-set from client type
+              </span>
+            )}
           </div>
           <span className="rounded-full bg-info/10 px-2.5 py-0.5 text-xs font-medium text-info">Auto-computed</span>
         </div>
