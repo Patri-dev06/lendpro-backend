@@ -27,6 +27,7 @@ export function UploadExcelTab() {
   // ── Template generation state ──────────────────────────────────────────
   const [collectors, setCollectors]     = useState<Collector[]>([]);
   const [selectedId, setSelectedId]     = useState<string>("all");
+  const [selectedArea, setSelectedArea] = useState<string>("all");
   const [templateDate, setTemplateDate] = useState(new Date().toISOString().slice(0, 10));
   const [generating, setGenerating]     = useState(false);
 
@@ -47,18 +48,36 @@ export function UploadExcelTab() {
   useEffect(() => { fetchCollectors(); }, [fetchCollectors]);
 
   // ── Template download ──────────────────────────────────────────────────
+  const areas = [...new Set(collectors.map((c) => c.area).filter(Boolean))].sort();
+
+  function handleCollectorChange(v: string) {
+    setSelectedId(v);
+    if (v !== "all") setSelectedArea("all");
+  }
+
+  function handleAreaChange(v: string) {
+    setSelectedArea(v);
+    if (v !== "all") setSelectedId("all");
+  }
+
   async function handleDownloadTemplate() {
     if (!token) return;
     setGenerating(true);
     try {
-      const loans = await apiRequest<LoanRow[]>("GET", "loans", { token });
+      const loans  = await apiRequest<LoanRow[]>("GET", "loans", { token });
       const unpaid = loans.filter((l) => l.status !== "paid");
-      const filtered = selectedId === "all"
-        ? unpaid
-        : unpaid.filter((l) => l.collector?.id === Number(selectedId));
+
+      const collectorAreaMap = new Map(collectors.map((c) => [c.id, c.area]));
+
+      const filtered =
+        selectedArea !== "all"
+          ? unpaid.filter((l) => l.collector && collectorAreaMap.get(l.collector.id) === selectedArea)
+          : selectedId === "all"
+            ? unpaid
+            : unpaid.filter((l) => l.collector?.id === Number(selectedId));
 
       if (filtered.length === 0) {
-        toast.error("No active loans found for the selected collector.");
+        toast.error("No active loans found for the selected filter.");
         return;
       }
 
@@ -70,13 +89,12 @@ export function UploadExcelTab() {
       };
       const row = (...cells: (string | number)[]) => cells.map(esc).join(",");
 
-      const selectedCollector = collectors.find((c) => c.id === Number(selectedId));
-      const collectorLabel    = selectedCollector ? selectedCollector.name : "All Collectors";
+      const filenameLabel =
+        selectedArea !== "all"
+          ? `Area - ${selectedArea}`
+          : collectors.find((c) => c.id === Number(selectedId))?.name ?? "All Collectors";
 
       const lines: string[] = [];
-
-      // Info rows at the top (comments — backend skips header row only,
-      // so we make a single header row the backend expects)
       lines.push(row(
         "loan_number", "payment_date", "amount", "remarks",
         "── REFERENCE ONLY (do not delete columns above) ──",
@@ -88,20 +106,20 @@ export function UploadExcelTab() {
           l.number,
           templateDate,
           l.daily_payment,
-          "",                      // remarks — fill in if needed
-          "",                      // separator column
+          "",
+          "",
           l.client.name,
           l.client.store_name,
           l.daily_payment,
         ));
       }
 
-      const csv = lines.join("\n");
+      const csv  = lines.join("\n");
       const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
       a.href     = url;
-      a.download = `Collection Template - ${collectorLabel} - ${templateDate}.csv`;
+      a.download = `Collection Template - ${filenameLabel} - ${templateDate}.csv`;
       a.click();
       URL.revokeObjectURL(url);
 
@@ -227,10 +245,10 @@ export function UploadExcelTab() {
         </div>
 
         <div className="px-5 py-4 space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Collector</Label>
-              <Select value={selectedId} onValueChange={setSelectedId}>
+              <Select value={selectedId} onValueChange={handleCollectorChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select collector…" />
                 </SelectTrigger>
@@ -240,6 +258,21 @@ export function UploadExcelTab() {
                     <SelectItem key={c.id} value={String(c.id)}>
                       {c.name}{c.area ? ` — ${c.area}` : ""}
                     </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Area</Label>
+              <Select value={selectedArea} onValueChange={handleAreaChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select area…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Areas</SelectItem>
+                  {areas.map((area) => (
+                    <SelectItem key={area} value={area}>{area}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

@@ -126,7 +126,7 @@ ${content}
         </div>
 
         <div ref={printRef} className="overflow-x-auto">
-          <Table className="min-w-150">
+          <Table className="min-w-125">
             <TableHeader>
               <TableRow>
                 <TableHead>Loan #</TableHead>
@@ -134,7 +134,6 @@ ${content}
                 <TableHead className="text-right">Daily</TableHead>
                 <TableHead className="text-right">Missed (Carry-over)</TableHead>
                 <TableHead className="text-right">Total Collectible</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
                 <TableHead className="text-right">Payment</TableHead>
               </TableRow>
             </TableHeader>
@@ -158,7 +157,6 @@ ${content}
                       : <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-right num font-semibold">{formatPHP(r.collectible)}</TableCell>
-                  <TableCell className="text-right num">{formatPHP(r.balance)}</TableCell>
                   <TableCell className="text-right num font-semibold">
                     {r.payment > 0
                       ? formatPHP(r.payment)
@@ -171,7 +169,6 @@ ${content}
                   <TableCell colSpan={2} className="text-sm font-semibold">Total</TableCell>
                   <TableCell colSpan={2} />
                   <TableCell className="text-right num font-semibold">{formatPHP(totals.collectible)}</TableCell>
-                  <TableCell className="text-right num font-semibold">{formatPHP(totals.balance)}</TableCell>
                   <TableCell className="text-right num font-bold text-primary">{formatPHP(totals.payment)}</TableCell>
                 </TableRow>
               )}

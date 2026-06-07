@@ -64,8 +64,9 @@ export function CollectionSheetDialog() {
     ? loans
     : loans.filter((l) => l.collector?.id === Number(selectedId));
 
-  const active  = filteredLoans.filter((l) => !["overdue", "past-due"].includes(l.status));
-  const pastDue = filteredLoans.filter((l) => ["overdue", "past-due"].includes(l.status));
+  const active      = filteredLoans.filter((l) => !["overdue", "past-due"].includes(l.status) && l.loan_type !== "reconstruct");
+  const reconstruct = filteredLoans.filter((l) => !["overdue", "past-due"].includes(l.status) && l.loan_type === "reconstruct");
+  const pastDue     = filteredLoans.filter((l) => ["overdue", "past-due"].includes(l.status));
   const selectedCollector = collectors.find((c) => c.id === Number(selectedId));
 
   const handlePrint = async () => {
@@ -134,8 +135,12 @@ export function CollectionSheetDialog() {
                 </div>
               )}
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Active clients</span>
+                <span className="text-muted-foreground">Active (new / reloan)</span>
                 <span className="font-medium text-green-700">{active.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Reconstruct</span>
+                <span className="font-medium text-blue-600">{reconstruct.length}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Past due / Overdue</span>

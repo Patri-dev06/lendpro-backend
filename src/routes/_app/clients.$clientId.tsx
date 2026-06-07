@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import React, { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, Loader2, MapPin, Phone, RefreshCw, Store } from "lucide-react";
+import { AlertTriangle, ArrowLeft, GitMerge, Loader2, MapPin, Phone, RefreshCw, Store } from "lucide-react";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { StatusBadge } from "@/components/finance/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -91,7 +91,8 @@ function ClientDetail() {
 
   const [client,  setClient]  = useState<ApiClient | null>(null);
   const [loading, setLoading] = useState(true);
-  const [reloanOpen, setReloanOpen] = useState(false);
+  const [reloanOpen,      setReloanOpen]      = useState(false);
+  const [reconstructOpen, setReconstructOpen] = useState(false);
 
   const fetchClient = useCallback(async () => {
     if (!token) return;
@@ -152,6 +153,11 @@ function ClientDetail() {
     navigate({ to: "/loans", search: { clientId: client!.id } });
   }
 
+  function handleReconstructCreated() {
+    setReconstructOpen(false);
+    navigate({ to: "/loans", search: { clientId: client!.id } });
+  }
+
   return (
     <div className="space-y-6">
       {/* Top bar */}
@@ -159,12 +165,22 @@ function ClientDetail() {
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link to="/clients"><ArrowLeft className="mr-1 h-4 w-4" />Back to clients</Link>
         </Button>
-        <Button
-          onClick={() => setReloanOpen(true)}
-          className="bg-primary text-primary-foreground hover:bg-primary-glow"
-        >
-          <RefreshCw className="mr-1.5 h-4 w-4" />New Reloan
-        </Button>
+        <div className="flex gap-2">
+          {activeLoan && activeLoan.status !== "pending" && (
+            <Button
+              variant="outline"
+              onClick={() => setReconstructOpen(true)}
+            >
+              <GitMerge className="mr-1.5 h-4 w-4" />Reconstruct
+            </Button>
+          )}
+          <Button
+            onClick={() => setReloanOpen(true)}
+            className="bg-primary text-primary-foreground hover:bg-primary-glow"
+          >
+            <RefreshCw className="mr-1.5 h-4 w-4" />New Reloan
+          </Button>
+        </div>
       </div>
 
       <PageHeader
@@ -365,6 +381,17 @@ function ClientDetail() {
         defaultPrincipal={activeLoan?.principal ?? 10000}
         onCreated={handleReloanCreated}
       />
+
+      {activeLoan && activeLoan.status !== "pending" && (
+        <ReconstructDialog
+          open={reconstructOpen}
+          onClose={() => setReconstructOpen(false)}
+          loan={activeLoan}
+          client={client}
+          token={token}
+          onCreated={handleReconstructCreated}
+        />
+      )}
     </div>
   );
 }
@@ -533,6 +560,169 @@ function ReloanDialog({
               ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
               : <RefreshCw className="mr-1.5 h-4 w-4" />}
             {saving ? "Creating…" : "Create reloan"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ── Reconstruct Dialog ──────────────────────────────────────────────────── */
+
+function ReconstructDialog({
+  open, onClose, loan, client, token, onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  loan: ApiLoan;
+  client: ApiClient;
+  token: string | null;
+  onCreated: () => void;
+}) {
+  const [termDays,      setTermDays]      = useState<TermOption>(60);
+  const [date,          setDate]          = useState(new Date().toISOString().slice(0, 10));
+  const [holidayCount,  setHolidayCount]  = useState(0);
+  const [saving,        setSaving]        = useState(false);
+  const [scRate,        setScRate]        = useState(0);
+  const [holidays,      setHolidays]      = useState<string[]>([]);
+  const [settingsReady, setSettingsReady] = useState(false);
+
+  useEffect(() => {
+    if (!open || !token || settingsReady) return;
+    apiRequest<ApiSetting[]>("GET", "settings", { token })
+      .then((data) => {
+        const m = Object.fromEntries(data.map((s) => [s.key, s.value ?? ""]));
+        setScRate(parseFloat(m.default_service_charge ?? "0") || 0);
+        const stored = parseInt(m.default_loan_term ?? "60", 10);
+        if ((TERM_OPTIONS as readonly number[]).includes(stored)) setTermDays(stored as TermOption);
+        try {
+          const h = JSON.parse(m.holidays ?? "[]");
+          if (Array.isArray(h))
+            setHolidays(h.map((x: { date?: string } | string) => (typeof x === "string" ? x : (x.date ?? ""))).filter(Boolean));
+        } catch { /* keep empty */ }
+        setSettingsReady(true);
+      })
+      .catch(() => {});
+  }, [open, token, settingsReady]);
+
+  const principal       = loan.current_balance;
+  const interest        = calcInterest(principal, termDays);
+  const sc              = calcServiceCharge(principal, scRate);
+  const totalReceivable = principal + interest;
+  const daily           = calcDailyPayment(totalReceivable, termDays);
+  const dueDate         = date ? addDays(date, termDays + holidayCount) : null;
+
+  async function handleSubmit() {
+    if (!token) return;
+    setSaving(true);
+    try {
+      await apiRequest("POST", `loans/${loan.id}/reconstruct`, {
+        token,
+        body: {
+          interest,
+          service_charge: sc,
+          daily_payment:  daily,
+          term_days:      termDays,
+          holiday_count:  holidayCount,
+          release_date:   date,
+        },
+      });
+      toast.success("Loan reconstructed", {
+        description: `${client.name} — ₱${principal.toLocaleString()} carried over · ${termDays} days`,
+      });
+      onCreated();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reconstruct loan.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Reconstruct Loan</DialogTitle>
+          <p className="text-xs text-muted-foreground">{client.name} · {client.store_name}</p>
+        </DialogHeader>
+
+        <div className="space-y-4 py-1">
+
+          {/* Warning */}
+          <div className="flex gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-300">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              The current loan <span className="font-semibold">{loan.number}</span> will be closed and a new reconstruct loan will be created in <span className="font-semibold">pending</span> status.
+            </span>
+          </div>
+
+          {/* Principal (locked) */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Principal (outstanding balance — locked)</Label>
+            <div className="flex h-10 items-center rounded-md border bg-muted/50 px-3 text-sm font-semibold num text-muted-foreground">
+              {formatPHP(principal)}
+            </div>
+          </div>
+
+          {/* Term */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Loan term</Label>
+            <Select value={String(termDays)} onValueChange={(v) => setTermDays(Number(v) as TermOption)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TERM_OPTIONS.map((t) => (
+                  <SelectItem key={t} value={String(t)}>
+                    {{ 30: "1 Month", 45: "1.5 Months", 60: "2 Months" }[t] ?? `${t} days`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Release date */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Release date</Label>
+            <DateInput value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+
+          {/* Holidays */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Holidays within term</Label>
+            <Select value={String(holidayCount)} onValueChange={(v) => setHolidayCount(Number(v))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {[0, 1, 2, 3, 4, 5].map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n === 0 ? "None" : `${n} holiday${n > 1 ? "s" : ""} (+${n} day${n > 1 ? "s" : ""})`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Live calculation */}
+          <div className="rounded-xl border bg-muted/30 p-4 space-y-2 text-sm">
+            <CalcRow label="Interest"       value={formatPHP(interest)} />
+            {sc > 0 && <CalcRow label="Processing fee" value={formatPHP(sc)} />}
+            <div className="border-t pt-2 space-y-2">
+              <CalcRow label="Total payable"  value={formatPHP(totalReceivable)} bold />
+              <CalcRow label="Daily payment"  value={formatPHP(daily)} bold accent />
+              {dueDate && <CalcRow label="Due date" value={formatDate(dueDate)} />}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={saving || principal <= 0}
+            className="bg-amber-600 text-white hover:bg-amber-700"
+          >
+            {saving
+              ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              : <GitMerge className="mr-1.5 h-4 w-4" />}
+            {saving ? "Reconstructing…" : "Reconstruct loan"}
           </Button>
         </DialogFooter>
       </DialogContent>

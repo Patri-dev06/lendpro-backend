@@ -1,4 +1,4 @@
-﻿import { formatPHP, formatDate } from "@/lib/format";
+import { formatPHP, formatDate } from "@/lib/format";
 import { LOAN_TYPE_LABELS } from "@/lib/loan-constants";
 
 export interface PrintClient {
@@ -108,6 +108,7 @@ export function printLedger(loan: PrintLoan) {
 
 export interface CollectionLoan {
   number: string;
+  loan_type: string;
   client: { name: string; store_name: string };
   daily_payment: number;
   current_balance: number;
@@ -119,8 +120,35 @@ interface CollectorGroup {
   id: number;
   name: string;
   area: string;
-  active: CollectionLoan[];
-  pastDue: CollectionLoan[];
+  active: CollectionLoan[];      // new-loan + reloan, not overdue/past-due
+  reconstruct: CollectionLoan[]; // reconstruct, not overdue/past-due
+  pastDue: CollectionLoan[];     // overdue + past-due (any loan type)
+}
+
+function buildGroups(loans: CollectionLoan[]): CollectorGroup[] {
+  const groupMap = new Map<number, CollectorGroup>();
+  const noCollector: CollectorGroup = { id: 0, name: "Unassigned", area: "—", active: [], reconstruct: [], pastDue: [] };
+
+  for (const loan of loans) {
+    const isPastDue = ["overdue", "past-due"].includes(loan.status);
+    const bucket    = (g: CollectorGroup) => {
+      if (isPastDue)                        g.pastDue.push(loan);
+      else if (loan.loan_type === "reconstruct") g.reconstruct.push(loan);
+      else                                  g.active.push(loan);
+    };
+
+    if (!loan.collector) { bucket(noCollector); continue; }
+
+    const cid = loan.collector.id;
+    if (!groupMap.has(cid)) {
+      groupMap.set(cid, { id: cid, name: loan.collector.name, area: loan.collector.area, active: [], reconstruct: [], pastDue: [] });
+    }
+    bucket(groupMap.get(cid)!);
+  }
+
+  const groups = [...groupMap.values()];
+  if (noCollector.active.length || noCollector.reconstruct.length || noCollector.pastDue.length) groups.push(noCollector);
+  return groups;
 }
 
 export function printCollectionSheet(
@@ -135,30 +163,10 @@ export function printCollectionSheet(
     year: "numeric", month: "long", day: "numeric",
   });
 
-  // Group loans by collector
-  const groupMap = new Map<number, CollectorGroup>();
-  const noCollector: CollectorGroup = { id: 0, name: "Unassigned", area: "—", active: [], pastDue: [] };
+  const groups = buildGroups(loans);
 
-  for (const loan of loans) {
-    if (!loan.collector) {
-      if (["overdue","past-due"].includes(loan.status)) noCollector.pastDue.push(loan);
-      else noCollector.active.push(loan);
-      continue;
-    }
-    const cid = loan.collector.id;
-    if (!groupMap.has(cid)) {
-      groupMap.set(cid, { id: cid, name: loan.collector.name, area: loan.collector.area, active: [], pastDue: [] });
-    }
-    const g = groupMap.get(cid)!;
-    if (["overdue","past-due"].includes(loan.status)) g.pastDue.push(loan);
-    else g.active.push(loan);
-  }
-
-  const groups = [...groupMap.values()];
-  if (noCollector.active.length || noCollector.pastDue.length) groups.push(noCollector);
-
-  function tableRows(list: CollectionLoan[]): string {
-    const minRows = Math.max(list.length, 20);
+  function tableRows(list: CollectionLoan[], minFill = 20): string {
+    const minRows = Math.max(list.length, minFill);
     return Array.from({ length: minRows }, (_, i) => {
       const loan = list[i];
       return `<tr>
@@ -166,10 +174,26 @@ export function printCollectionSheet(
         <td>${loan ? `<span class="client-name">${loan.client.name}</span><br/><span class="store">${loan.client.store_name}</span>` : ""}</td>
         <td class="c num" style="width:70px">${loan ? formatPHP(loan.daily_payment) : ""}</td>
         <td class="c" style="width:54px"></td>
-        <td class="c" style="width:64px"></td>
         <td style="width:80px"></td>
       </tr>`;
     }).join("");
+  }
+
+  function sectionTable(title: string, list: CollectionLoan[], minFill = 20): string {
+    return `
+  <div class="section-title" style="margin-top:8px">${title} (${list.length})</div>
+  <table>
+    <thead>
+      <tr>
+        <th>No.</th>
+        <th style="text-align:left">Client / Business</th>
+        <th>Daily Collection</th>
+        <th>Amount Paid</th>
+        <th>Remarks</th>
+      </tr>
+    </thead>
+    <tbody>${tableRows(list, minFill)}</tbody>
+  </table>`;
   }
 
   function collectorPage(g: CollectorGroup, isLast: boolean, isFirst: boolean): string {
@@ -206,36 +230,13 @@ export function printCollectionSheet(
     </div>
   </div>
 
-  <div class="section-title">Active Clients (${g.active.length})</div>
-  <table>
-    <thead>
-      <tr>
-        <th>No.</th>
-        <th style="text-align:left">Client / Business</th>
-        <th>Daily Collection</th>
-        <th>Amount Paid</th>
-        <th>Amount Unpaid</th>
-        <th>Remarks</th>
-      </tr>
-    </thead>
-    <tbody>${tableRows(g.active)}</tbody>
-  </table>
+  ${sectionTable("Active Clients — New Loan / Reloan", g.active, 20)}
   <div class="total-bar"><span>Total Active Collection: P ___________________</span></div>
 
-  <div class="section-title" style="margin-top:10px">Past Due / Overdue Clients (${g.pastDue.length})</div>
-  <table>
-    <thead>
-      <tr>
-        <th>No.</th>
-        <th style="text-align:left">Client / Business</th>
-        <th>Daily Collection</th>
-        <th>Amount Paid</th>
-        <th>Amount Unpaid</th>
-        <th>Remarks</th>
-      </tr>
-    </thead>
-    <tbody>${tableRows(g.pastDue)}</tbody>
-  </table>
+  ${sectionTable("Reconstruct Clients", g.reconstruct, 10)}
+  <div class="total-bar"><span>Total Reconstruct Collection: P ___________________</span></div>
+
+  ${sectionTable("Past Due / Overdue Clients", g.pastDue, 10)}
   <div class="total-bar"><span>Total Past Due Collection: P ___________________</span></div>
 
   <div class="total-bar" style="margin-top:4px;font-size:10px">
@@ -346,40 +347,21 @@ export function exportCollectionSheetCsv(
   companyAddress: string,
   filenameHint = "all",
 ): void {
-  const today = new Date().toLocaleDateString("en-PH", {
-    year: "numeric", month: "long", day: "numeric",
-  });
+  const today    = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
   const dateSlug = new Date().toISOString().slice(0, 10);
   const filename = `Collection Sheet - ${filenameHint} - ${dateSlug}.csv`;
 
-  const groupMap = new Map<number, CollectorGroup>();
-  const noCollector: CollectorGroup = { id: 0, name: "Unassigned", area: "—", active: [], pastDue: [] };
-
-  for (const loan of loans) {
-    if (!loan.collector) {
-      if (["overdue", "past-due"].includes(loan.status)) noCollector.pastDue.push(loan);
-      else noCollector.active.push(loan);
-      continue;
-    }
-    const cid = loan.collector.id;
-    if (!groupMap.has(cid)) {
-      groupMap.set(cid, { id: cid, name: loan.collector.name, area: loan.collector.area, active: [], pastDue: [] });
-    }
-    const g = groupMap.get(cid)!;
-    if (["overdue", "past-due"].includes(loan.status)) g.pastDue.push(loan);
-    else g.active.push(loan);
-  }
-
-  const groups = [...groupMap.values()];
-  if (noCollector.active.length || noCollector.pastDue.length) groups.push(noCollector);
+  const groups = buildGroups(loans);
 
   const lines: string[] = [];
   const esc = (v: string | number) => {
     const s = String(v);
     return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const row = (...cells: (string | number)[]) => lines.push(cells.map(esc).join(","));
+  const row   = (...cells: (string | number)[]) => lines.push(cells.map(esc).join(","));
   const blank = () => lines.push("");
+
+  const SECTION_HEADER = ["No.", "Client Name", "Business / Store", "Daily Collection", "Amount Paid", "Remarks"];
 
   row(companyName || "BuenaMano Lending Corporation");
   row(companyAddress || "");
@@ -394,26 +376,39 @@ export function exportCollectionSheetCsv(
     row("Total Collection:", "", "Total:", "", "BB:", "");
     blank();
 
-    row(`ACTIVE CLIENTS (${g.active.length})`);
-    row("No.", "Client Name", "Business / Store", "Daily Collection", "Amount Paid", "Amount Unpaid", "Remarks");
+    // Active clients — new-loan + reloan
+    row(`ACTIVE CLIENTS — NEW LOAN / RELOAN (${g.active.length})`);
+    row(...SECTION_HEADER);
     const minActive = Math.max(g.active.length, 20);
     for (let i = 0; i < minActive; i++) {
       const loan = g.active[i];
-      row(i + 1, loan?.client.name ?? "", loan?.client.store_name ?? "", loan?.daily_payment ?? "", "", "", "");
+      row(i + 1, loan?.client.name ?? "", loan?.client.store_name ?? "", loan?.daily_payment ?? "", "", "");
     }
-    row("", "", "", "Total Active Collection:", "P", "");
+    row("", "", "", "Total Active Collection:", "P");
     blank();
 
+    // Reconstruct clients
+    row(`RECONSTRUCT CLIENTS (${g.reconstruct.length})`);
+    row(...SECTION_HEADER);
+    const minRecon = Math.max(g.reconstruct.length, 10);
+    for (let i = 0; i < minRecon; i++) {
+      const loan = g.reconstruct[i];
+      row(i + 1, loan?.client.name ?? "", loan?.client.store_name ?? "", loan?.daily_payment ?? "", "", "");
+    }
+    row("", "", "", "Total Reconstruct Collection:", "P");
+    blank();
+
+    // Past due / overdue
     row(`PAST DUE / OVERDUE CLIENTS (${g.pastDue.length})`);
-    row("No.", "Client Name", "Business / Store", "Daily Collection", "Amount Paid", "Amount Unpaid", "Remarks");
+    row(...SECTION_HEADER);
     const minPast = Math.max(g.pastDue.length, 10);
     for (let i = 0; i < minPast; i++) {
       const loan = g.pastDue[i];
-      row(i + 1, loan?.client.name ?? "", loan?.client.store_name ?? "", loan?.daily_payment ?? "", "", "", "");
+      row(i + 1, loan?.client.name ?? "", loan?.client.store_name ?? "", loan?.daily_payment ?? "", "", "");
     }
-    row("", "", "", "Total Past Due Collection:", "P", "");
+    row("", "", "", "Total Past Due Collection:", "P");
     blank();
-    row("", "", "", "TOTAL DAILY COLLECTION:", "P", "");
+    row("", "", "", "TOTAL DAILY COLLECTION:", "P");
     blank();
     row("I hereby certify that the above data are true and correct.");
     blank();
@@ -423,11 +418,11 @@ export function exportCollectionSheetCsv(
     blank();
   }
 
-  const csv = lines.join("\n");
+  const csv  = lines.join("\n");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
