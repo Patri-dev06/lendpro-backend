@@ -18,6 +18,14 @@ export function TopBar() {
   const navigate = useNavigate();
   const { role, user, logout } = useRole();
   const [changePwOpen, setChangePwOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState("");
+
+  function handleSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" && globalSearch.trim()) {
+      navigate({ to: "/clients", search: { q: globalSearch.trim() } });
+      setGlobalSearch("");
+    }
+  }
   const displayName = user?.name ?? "User";
   const initials = displayName.split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
@@ -42,7 +50,10 @@ export function TopBar() {
       <div className="relative mx-2 hidden flex-1 max-w-sm md:block">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Search clients, loans, payments…"
+          value={globalSearch}
+          onChange={(e) => setGlobalSearch(e.target.value)}
+          onKeyDown={handleSearchKey}
+          placeholder="Search clients… (press Enter)"
           className="h-8 rounded-lg pl-8 text-sm bg-muted/50 border-0 focus-visible:ring-1"
         />
       </div>

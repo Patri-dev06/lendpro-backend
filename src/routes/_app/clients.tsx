@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { PH_PROVINCES, PH_CITIES } from "@/lib/ph-locations";
+import { getBarangays } from "@/lib/ph-barangays";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { toast } from "sonner";
@@ -53,6 +54,9 @@ const EMAIL_TEMPLATES = {
 
 /* ---------- Route ---------- */
 export const Route = createFileRoute("/_app/clients")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    q: typeof search.q === "string" ? search.q : "",
+  }),
   head: () => ({ meta: [{ title: "Clients — BuenaMano" }] }),
   component: ClientsPage,
 });
@@ -61,10 +65,11 @@ export const Route = createFileRoute("/_app/clients")({
 function ClientsPage() {
   const { token } = useRole();
   const navigate = useNavigate();
+  const { q: initialQ } = Route.useSearch();
   const [clients, setClients] = useState<Client[]>([]);
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQ);
   const [type, setType] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [collectorFilter, setCollectorFilter] = useState("all");
@@ -307,10 +312,10 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
   const [phone, setPhone]         = useState("");
   const [storeName, setStoreName] = useState("");
   const [email, setEmail]         = useState("");
-  const [street, setStreet]           = useState("");
-  const [subdivision, setSubdivision] = useState("");
   const [province, setProvince]       = useState("");
   const [city, setCity]               = useState("");
+  const [barangay, setBarangay]       = useState("");
+  const [street, setStreet]           = useState("");
   const [type, setType]           = useState("new");
   const [collectorId, setCollectorId] = useState(collectors[0]?.id?.toString() ?? "");
   const [latitude, setLatitude]   = useState("");
@@ -324,9 +329,10 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
     if (!phone.trim())                          e.phone = "Cellphone number is required.";
     else if (phone.replace(/\D/g, "").length !== 10) e.phone = "Enter 10 digits after +63 (e.g. 917 000 0000).";
     if (!storeName.trim()) e.storeName   = "Store name is required.";
-    if (!street.trim())    e.street      = "Street is required.";
     if (!province)         e.province    = "Province is required.";
     if (!city)             e.city        = "City / Municipality is required.";
+    if (!barangay.trim())  e.barangay    = "Barangay is required.";
+    if (!street.trim())    e.street      = "Street is required.";
     if (!collectorId)      e.collectorId = "Please assign a collector.";
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
                            e.email       = "Invalid email address.";
@@ -341,7 +347,7 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
     const e = validate();
     if (Object.keys(e).length > 0) { setErrors(e); return; }
 
-    const fullAddress = [street.trim(), subdivision.trim(), city, province]
+    const fullAddress = [street.trim(), barangay.trim(), city, province]
       .filter(Boolean)
       .join(", ");
 
@@ -410,22 +416,11 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
             placeholder="client@email.com" disabled={loading} className={errors.email ? "border-destructive" : ""} />
         </Field>
 
-        <Field label="Street / Barangay" full error={errors.street}>
-          <Input value={street} onChange={(e) => { setStreet(e.target.value); setErrors((p) => ({ ...p, street: "" })); }}
-            placeholder="e.g. 123 Rizal St., Brgy. San Jose" disabled={loading}
-            className={errors.street ? "border-destructive" : ""} />
-        </Field>
-
-        <Field label="Subdivision (optional)" full>
-          <Input value={subdivision} onChange={(e) => setSubdivision(e.target.value)}
-            placeholder="e.g. Greenville Subdivision" disabled={loading} />
-        </Field>
-
         <Field label="Province" error={errors.province}>
           <SearchableCombobox
             options={PH_PROVINCES.map((p) => ({ value: p, label: p }))}
             value={province}
-            onChange={(v) => { setProvince(v); setCity(""); setErrors((p) => ({ ...p, province: "" })); }}
+            onChange={(v) => { setProvince(v); setCity(""); setBarangay(""); setErrors((p) => ({ ...p, province: "" })); }}
             placeholder="Search province…"
             error={!!errors.province}
             disabled={loading}
@@ -436,11 +431,38 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
           <SearchableCombobox
             options={(PH_CITIES[province] ?? []).map((c) => ({ value: c, label: c }))}
             value={city}
-            onChange={(v) => { setCity(v); setErrors((p) => ({ ...p, city: "" })); }}
+            onChange={(v) => { setCity(v); setBarangay(""); setErrors((p) => ({ ...p, city: "" })); }}
             placeholder={province ? "Search city…" : "Select province first"}
             error={!!errors.city}
             disabled={loading || !province}
           />
+        </Field>
+
+        <Field label="Barangay" full error={errors.barangay}>
+          {getBarangays(province, city).length > 0 ? (
+            <SearchableCombobox
+              options={getBarangays(province, city).map((b) => ({ value: b, label: b }))}
+              value={barangay}
+              onChange={(v) => { setBarangay(v); setErrors((p) => ({ ...p, barangay: "" })); }}
+              placeholder={city ? "Search barangay…" : "Select city first"}
+              error={!!errors.barangay}
+              disabled={loading || !city}
+            />
+          ) : (
+            <Input
+              value={barangay}
+              onChange={(e) => { setBarangay(e.target.value); setErrors((p) => ({ ...p, barangay: "" })); }}
+              placeholder={city ? "Type barangay name" : "Select city first"}
+              disabled={loading || !city}
+              className={errors.barangay ? "border-destructive" : ""}
+            />
+          )}
+        </Field>
+
+        <Field label="Street" full error={errors.street}>
+          <Input value={street} onChange={(e) => { setStreet(e.target.value); setErrors((p) => ({ ...p, street: "" })); }}
+            placeholder="e.g. 123 Rizal St." disabled={loading}
+            className={errors.street ? "border-destructive" : ""} />
         </Field>
 
         <Field label="Client type">
@@ -509,14 +531,20 @@ interface EditClientDialogProps {
 function parseAddress(addr: string) {
   const parts = addr.split(", ").map((s) => s.trim()).filter(Boolean);
   if (parts.length >= 3) {
-    const maybeProvince = parts[parts.length - 1];
-    const maybeCity     = parts[parts.length - 2];
-    if (PH_PROVINCES.includes(maybeProvince) && (PH_CITIES[maybeProvince] ?? []).includes(maybeCity)) {
+    const province = parts[parts.length - 1];
+    const city     = parts[parts.length - 2];
+    if (PH_PROVINCES.includes(province) && (PH_CITIES[province] ?? []).includes(city)) {
       const rest = parts.slice(0, parts.length - 2);
-      return { street: rest[0] ?? "", subdivision: rest.slice(1).join(", "), city: maybeCity, province: maybeProvince };
+      // rest = [street] or [street, barangay] or [street, oldSubdivision]
+      return {
+        street:   rest[0] ?? "",
+        barangay: rest.length >= 2 ? rest[rest.length - 1] : "",
+        city,
+        province,
+      };
     }
   }
-  return { street: addr, subdivision: "", city: "", province: "" };
+  return { street: addr, barangay: "", city: "", province: "" };
 }
 
 function EditClientDialog({ client, collectors, token, onSaved, onCancel }: EditClientDialogProps) {
@@ -525,10 +553,10 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
   const [phone, setPhone]         = useState(client.phone.replace(/^\+?63/, "").replace(/^0/, ""));
   const [storeName, setStoreName] = useState(client.store_name);
   const [email, setEmail]         = useState(client.email ?? "");
-  const [street, setStreet]           = useState(parsed.street);
-  const [subdivision, setSubdivision] = useState(parsed.subdivision);
   const [province, setProvince]       = useState(parsed.province);
   const [city, setCity]               = useState(parsed.city);
+  const [barangay, setBarangay]       = useState(parsed.barangay);
+  const [street, setStreet]           = useState(parsed.street);
   const [type, setType]           = useState(client.type);
   const [status, setStatus]       = useState(client.status);
   const [collectorId, setCollectorId] = useState(String(client.collector_id));
@@ -543,9 +571,10 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
     if (!phone.trim())     e.phone     = "Cellphone number is required.";
     else if (phone.replace(/\D/g, "").length !== 10) e.phone = "Enter 10 digits after +63.";
     if (!storeName.trim()) e.storeName = "Store name is required.";
-    if (!street.trim())    e.street    = "Street is required.";
     if (!province)         e.province  = "Province is required.";
     if (!city)             e.city      = "City / Municipality is required.";
+    if (!barangay.trim())  e.barangay  = "Barangay is required.";
+    if (!street.trim())    e.street    = "Street is required.";
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
                            e.email     = "Invalid email address.";
     if (latitude && (isNaN(Number(latitude)) || Number(latitude) < -90 || Number(latitude) > 90))
@@ -560,7 +589,7 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
     if (Object.keys(e).length > 0) { setErrors(e); return; }
 
     const localPhone  = "0" + phone.replace(/\D/g, "");
-    const fullAddress = [street.trim(), subdivision.trim(), city, province].filter(Boolean).join(", ");
+    const fullAddress = [street.trim(), barangay.trim(), city, province].filter(Boolean).join(", ");
 
     setLoading(true);
     try {
@@ -622,22 +651,11 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
             placeholder="client@email.com" disabled={loading} className={errors.email ? "border-destructive" : ""} />
         </Field>
 
-        <Field label="Street / Barangay" full error={errors.street}>
-          <Input value={street} onChange={(e) => { setStreet(e.target.value); setErrors((p) => ({ ...p, street: "" })); }}
-            placeholder="e.g. 123 Rizal St., Brgy. San Jose" disabled={loading}
-            className={errors.street ? "border-destructive" : ""} />
-        </Field>
-
-        <Field label="Subdivision (optional)" full>
-          <Input value={subdivision} onChange={(e) => setSubdivision(e.target.value)}
-            placeholder="e.g. Greenville Subdivision" disabled={loading} />
-        </Field>
-
         <Field label="Province" error={errors.province}>
           <SearchableCombobox
             options={PH_PROVINCES.map((p) => ({ value: p, label: p }))}
             value={province}
-            onChange={(v) => { setProvince(v); setCity(""); setErrors((p) => ({ ...p, province: "" })); }}
+            onChange={(v) => { setProvince(v); setCity(""); setBarangay(""); setErrors((p) => ({ ...p, province: "" })); }}
             placeholder="Search province…"
             error={!!errors.province}
             disabled={loading}
@@ -648,11 +666,38 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
           <SearchableCombobox
             options={(PH_CITIES[province] ?? []).map((c) => ({ value: c, label: c }))}
             value={city}
-            onChange={(v) => { setCity(v); setErrors((p) => ({ ...p, city: "" })); }}
+            onChange={(v) => { setCity(v); setBarangay(""); setErrors((p) => ({ ...p, city: "" })); }}
             placeholder={province ? "Search city…" : "Select province first"}
             error={!!errors.city}
             disabled={loading || !province}
           />
+        </Field>
+
+        <Field label="Barangay" full error={errors.barangay}>
+          {getBarangays(province, city).length > 0 ? (
+            <SearchableCombobox
+              options={getBarangays(province, city).map((b) => ({ value: b, label: b }))}
+              value={barangay}
+              onChange={(v) => { setBarangay(v); setErrors((p) => ({ ...p, barangay: "" })); }}
+              placeholder={city ? "Search barangay…" : "Select city first"}
+              error={!!errors.barangay}
+              disabled={loading || !city}
+            />
+          ) : (
+            <Input
+              value={barangay}
+              onChange={(e) => { setBarangay(e.target.value); setErrors((p) => ({ ...p, barangay: "" })); }}
+              placeholder={city ? "Type barangay name" : "Select city first"}
+              disabled={loading || !city}
+              className={errors.barangay ? "border-destructive" : ""}
+            />
+          )}
+        </Field>
+
+        <Field label="Street" full error={errors.street}>
+          <Input value={street} onChange={(e) => { setStreet(e.target.value); setErrors((p) => ({ ...p, street: "" })); }}
+            placeholder="e.g. 123 Rizal St." disabled={loading}
+            className={errors.street ? "border-destructive" : ""} />
         </Field>
 
         <Field label="Client type">
