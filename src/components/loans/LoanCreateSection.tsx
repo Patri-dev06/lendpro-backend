@@ -399,7 +399,9 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
           <div className="mt-4 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
-              <strong>{selectedClient.name}</strong> already has an outstanding loan. Creating another loan may cause collection conflicts.
+              <strong>{selectedClient.name}</strong> already has an active outstanding loan.
+              A new loan cannot be created until the existing loan is fully paid or restructured.
+              Use <strong>Reconstruct</strong> from the active loan ledger instead.
             </span>
           </div>
         )}
@@ -425,7 +427,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
           <Button
             className="bg-primary text-primary-foreground hover:bg-primary-glow"
             onClick={handleCreate}
-            disabled={saving || selectedClient?.approval_status === "pending_approval"}
+            disabled={saving || !!selectedClient?.has_outstanding_loan || selectedClient?.approval_status === "pending_approval"}
           >
             {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}
             {saving ? "Creating…" : "Create loan & generate schedule"}

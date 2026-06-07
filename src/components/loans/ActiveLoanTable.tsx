@@ -15,9 +15,10 @@ import { LoanDetailSheet } from "@/components/loans/LoanDetailSheet";
 interface Props {
   loans: ApiLoan[];
   loading: boolean;
+  onReconstructed?: (oldLoanId: number, newLoan: ApiLoan) => void;
 }
 
-export function ActiveLoanTable({ loans, loading }: Props) {
+export function ActiveLoanTable({ loans, loading, onReconstructed }: Props) {
   const [q, setQ]               = useState("");
   const [status, setStatus]     = useState("all");
   const [type, setType]         = useState("all");
@@ -207,6 +208,10 @@ export function ActiveLoanTable({ loans, loading }: Props) {
         loan={selectedLoan}
         open={!!selectedLoan}
         onClose={() => setSelectedLoan(null)}
+        onReconstructed={(oldId, newLoan) => {
+          setSelectedLoan(null);
+          onReconstructed?.(oldId, newLoan);
+        }}
       />
     </div>
   );
