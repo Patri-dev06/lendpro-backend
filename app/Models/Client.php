@@ -12,8 +12,10 @@ class Client extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'number', 'name', 'store_name', 'address', 'phone', 'email',
-        'type', 'collector_id', 'status', 'latitude', 'longitude',
+        'number', 'name', 'first_name', 'middle_name', 'last_name',
+        'store_name', 'address', 'phone', 'email',
+        'type', 'collector_id', 'status', 'approval_status',
+        'latitude', 'longitude',
     ];
 
     protected $casts = [

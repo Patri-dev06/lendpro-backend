@@ -12,17 +12,27 @@ class ClientController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $clients = Client::with(['collector', 'loans' => fn ($q) => $q->whereNotIn('status', ['paid'])])
+        $clients = Client::with([
+                'collector',
+                'loans' => fn ($q) => $q->whereNotIn('status', ['paid', 'pending']),
+            ])
             ->when($request->search, fn ($q, $s) => $q->where(fn ($q2) =>
-                $q2->where('name', 'like', "%$s%")
-                   ->orWhere('store_name', 'like', "%$s%")
-                   ->orWhere('number', 'like', "%$s%")
+                $q2->where('name',       'ilike', "%$s%")
+                   ->orWhere('store_name','ilike', "%$s%")
+                   ->orWhere('number',    'ilike', "%$s%")
+                   ->orWhere('first_name','ilike', "%$s%")
+                   ->orWhere('last_name', 'ilike', "%$s%")
             ))
-            ->when($request->type, fn ($q, $t) => $q->where('type', $t))
-            ->when($request->status, fn ($q, $s) => $q->where('status', $s))
+            ->when($request->type,         fn ($q, $t)  => $q->where('type', $t))
+            ->when($request->status,       fn ($q, $s)  => $q->where('status', $s))
             ->when($request->collector_id, fn ($q, $id) => $q->where('collector_id', $id))
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->map(function ($client) {
+                $arr = $client->toArray();
+                $arr['has_outstanding_loan'] = $client->loans->isNotEmpty();
+                return $arr;
+            });
 
         return response()->json($clients);
     }
@@ -30,7 +40,9 @@ class ClientController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'name'         => 'required|string|max:255',
+            'first_name'   => 'required|string|max:255',
+            'middle_name'  => 'nullable|string|max:255',
+            'last_name'    => 'required|string|max:255',
             'store_name'   => 'required|string|max:255',
             'address'      => 'required|string',
             'phone'        => 'required|string|max:30',
@@ -41,16 +53,43 @@ class ClientController extends Controller
             'longitude'    => 'nullable|numeric|between:-180,180',
         ]);
 
-        $year   = now()->year;
-        $seq    = Client::whereYear('created_at', $year)->count() + 1;
+        // Compose full name from parts
+        $nameParts = array_filter([$data['first_name'], $data['middle_name'] ?? null, $data['last_name']]);
+        $data['name'] = implode(' ', $nameParts);
+
+        // Duplicate detection: same first+last name OR same store name (approved clients only)
+        $dupByName = Client::where('first_name', $data['first_name'])
+            ->where('last_name', $data['last_name'])
+            ->where('approval_status', 'approved')
+            ->exists();
+
+        $dupByStore = Client::where('store_name', $data['store_name'])
+            ->where('approval_status', 'approved')
+            ->exists();
+
+        $data['approval_status'] = ($dupByName || $dupByStore) ? 'pending_approval' : 'approved';
+
+        $year          = now()->year;
+        $seq           = Client::withTrashed()->whereYear('created_at', $year)->count() + 1;
         $data['number'] = sprintf('CL-%d-%03d', $year, $seq);
         $data['status'] = $data['type'];
 
         $client = Client::create($data);
 
-        AuditLog::record('CREATE_CLIENT', $client->number, "Created client {$client->name}");
+        $reason = $dupByName && $dupByStore
+            ? 'duplicate name and store'
+            : ($dupByName ? 'duplicate name' : ($dupByStore ? 'duplicate store' : ''));
 
-        return response()->json($client->load('collector'), 201);
+        AuditLog::record(
+            'CREATE_CLIENT',
+            $client->number,
+            "Created client {$client->name}" . ($reason ? " — pending approval ({$reason})" : '')
+        );
+
+        return response()->json(
+            array_merge($client->load('collector')->toArray(), ['has_outstanding_loan' => false]),
+            201
+        );
     }
 
     public function show(Client $client): JsonResponse
@@ -61,7 +100,9 @@ class ClientController extends Controller
     public function update(Request $request, Client $client): JsonResponse
     {
         $data = $request->validate([
-            'name'         => 'sometimes|string|max:255',
+            'first_name'   => 'sometimes|string|max:255',
+            'middle_name'  => 'nullable|string|max:255',
+            'last_name'    => 'sometimes|string|max:255',
             'store_name'   => 'sometimes|string|max:255',
             'address'      => 'sometimes|string',
             'phone'        => 'sometimes|string|max:30',
@@ -73,11 +114,49 @@ class ClientController extends Controller
             'longitude'    => 'nullable|numeric|between:-180,180',
         ]);
 
+        // Recompose full name if any name part is being updated
+        $firstName  = $data['first_name']  ?? $client->first_name;
+        $middleName = array_key_exists('middle_name', $data) ? $data['middle_name'] : $client->middle_name;
+        $lastName   = $data['last_name']   ?? $client->last_name;
+
+        if (isset($data['first_name']) || array_key_exists('middle_name', $data) || isset($data['last_name'])) {
+            $data['name'] = implode(' ', array_filter([$firstName, $middleName, $lastName]));
+        }
+
         $client->update($data);
 
         AuditLog::record('UPDATE_CLIENT', $client->number, "Updated client {$client->name}");
 
         return response()->json($client->load('collector'));
+    }
+
+    public function approve(Client $client): JsonResponse
+    {
+        if ($client->approval_status !== 'pending_approval') {
+            return response()->json(['message' => 'Client is not pending approval.'], 422);
+        }
+
+        $client->update(['approval_status' => 'approved']);
+        AuditLog::record('APPROVE_CLIENT', $client->number, "Approved duplicate client {$client->name}");
+
+        return response()->json(
+            array_merge($client->load('collector')->toArray(), ['has_outstanding_loan' => false])
+        );
+    }
+
+    public function reject(Client $client): JsonResponse
+    {
+        if ($client->approval_status !== 'pending_approval') {
+            return response()->json(['message' => 'Client is not pending approval.'], 422);
+        }
+
+        $number = $client->number;
+        $name   = $client->name;
+        $client->forceDelete();
+
+        AuditLog::record('REJECT_CLIENT', $number, "Rejected duplicate client {$name}");
+
+        return response()->json(['message' => 'Client rejected and removed.']);
     }
 
     public function destroy(Client $client): JsonResponse

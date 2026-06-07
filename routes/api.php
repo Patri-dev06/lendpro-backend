@@ -41,7 +41,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('clients/{client}', [ClientController::class, 'update']);
     });
     Route::middleware('role:admin')->group(function () {
-        Route::delete('clients/{client}', [ClientController::class, 'destroy']);
+        Route::delete('clients/{client}',          [ClientController::class, 'destroy']);
+        Route::post('clients/{client}/approve',    [ClientController::class, 'approve']);
+        Route::post('clients/{client}/reject',     [ClientController::class, 'reject']);
     });
 
 
