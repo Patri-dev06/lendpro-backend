@@ -204,18 +204,22 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
       });
       setCreatedLoanNumber(loan.number);
       onLoanCreated(loan);
-      // Reset form — restore setting-based defaults
+      // Reset form — restore setting-based defaults, clear all fields
       const resetPrincipal = 10000;
       const resetSc        = Math.round(resetPrincipal * defaultScRate / 100);
       const resetTerm      = termDays;
       const resetInterest  = calcInterest(resetPrincipal, resetTerm);
       setPrincipal(resetPrincipal);
       setInterest(resetInterest);
+      setSc(resetSc);
       setTermDays(resetTerm);
       recalcDailyRaw(resetPrincipal, resetInterest, resetSc, resetTerm);
       setHolidayCount(0);
       setRemarks(""); setErrors({});
       setDate(new Date().toISOString().slice(0, 10));
+      setClientId(null);
+      setLoanType("new-loan");
+      setCreatedLoanNumber(undefined);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create loan.");
     } finally {

@@ -1,15 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Download, Loader2, Printer } from "lucide-react";
+import { CalendarClock, Download, Loader2, Printer } from "lucide-react";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { StatusBadge } from "@/components/finance/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { DateInput } from "@/components/shared/DateInput";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
-import { formatPHP, formatDate } from "@/lib/format";
+import { formatPHP, formatDate, addDays } from "@/lib/format";
 
 function fmtDate(s: string): string {
   const d = new Date(s.replace(" ", "T"));
@@ -29,6 +32,10 @@ interface ApiLoan {
   total_receivable: number;
   daily_payment: number;
   current_balance: number;
+  release_date: string;
+  due_date: string;
+  term_days: number;
+  holiday_count: number;
   status: string;
   client: { name: string; store_name: string };
   collector: { name: string };
@@ -57,6 +64,11 @@ function SchedulePage() {
   // Filters
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate]     = useState("");
+
+  // Reschedule dialog (for pending loans)
+  const [editingDate, setEditingDate]       = useState(false);
+  const [newReleaseDate, setNewReleaseDate] = useState("");
+  const [rescheduling, setRescheduling]     = useState(false);
 
   const fetchLoans = useCallback(async () => {
     if (!token) return;
@@ -88,6 +100,26 @@ function SchedulePage() {
   useEffect(() => { if (loanId) fetchSchedule(loanId); }, [loanId, fetchSchedule]);
 
   const loan = loans.find((l) => l.id === loanId);
+
+  async function handleReschedule() {
+    if (!loan || !newReleaseDate || !token) return;
+    setRescheduling(true);
+    try {
+      const updated = await apiRequest<ApiLoan>("PATCH", `loans/${loan.id}/reschedule`, {
+        token,
+        body: { release_date: newReleaseDate },
+      });
+      setLoans((prev) => prev.map((l) => l.id === updated.id ? updated : l));
+      if (loanId) fetchSchedule(loanId);
+      toast.success(`Release date updated to ${fmtDate(newReleaseDate)}.`);
+      setEditingDate(false);
+      setNewReleaseDate("");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update release date.");
+    } finally {
+      setRescheduling(false);
+    }
+  }
 
   const filtered = rows.filter((r) => {
     if (!r.actual) return false;
@@ -122,7 +154,16 @@ function SchedulePage() {
         title="Automated collection schedule"
         subtitle="Daily payment plan generated when the loan was created."
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {loan?.status === "pending" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setNewReleaseDate(loan.release_date); setEditingDate(true); }}
+              >
+                <CalendarClock className="mr-1.5 h-4 w-4" />Change Release Date
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={handlePrint}><Printer className="mr-1.5 h-4 w-4" />Print</Button>
             <Button variant="outline" size="sm" onClick={handleExport}><Download className="mr-1.5 h-4 w-4" />Export</Button>
           </div>
@@ -139,6 +180,8 @@ function SchedulePage() {
               <p className="text-sm text-muted-foreground">{loan.client.store_name} · Loan {loan.number}</p>
             </div>
             <div className="flex flex-wrap gap-3">
+              <KV label="Release date"     value={fmtDate(loan.release_date)} />
+              <KV label="Due date"         value={fmtDate(loan.due_date)} />
               <KV label="Total receivable" value={formatPHP(loan.total_receivable)} />
               <KV label="Daily payment"    value={formatPHP(loan.daily_payment)} />
               <KV label="Current balance"  value={formatPHP(loan.current_balance)} highlight />
@@ -212,6 +255,50 @@ function SchedulePage() {
         </div>
       </div>
     </div>
+
+    {/* Change Release Date dialog — only for pending loans */}
+    <Dialog open={editingDate} onOpenChange={(o) => { if (!o) { setEditingDate(false); setNewReleaseDate(""); } }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Change Release Date</DialogTitle>
+        </DialogHeader>
+        {loan && (
+          <div className="space-y-4">
+            <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Loan</span>
+                <span className="font-medium">{loan.number} — {loan.client.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Current release date</span>
+                <span className="font-medium">{fmtDate(loan.release_date)}</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>New release date</Label>
+              <DateInput value={newReleaseDate} onChange={(e) => setNewReleaseDate(e.target.value)} />
+            </div>
+            {newReleaseDate && (
+              <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm dark:border-blue-900 dark:bg-blue-950/30">
+                <span className="text-muted-foreground">New due date: </span>
+                <span className="font-semibold">
+                  {addDays(newReleaseDate + "T00:00:00", loan.term_days + loan.holiday_count)
+                    .toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { setEditingDate(false); setNewReleaseDate(""); }} disabled={rescheduling}>
+            Cancel
+          </Button>
+          <Button onClick={handleReschedule} disabled={!newReleaseDate || rescheduling}>
+            {rescheduling ? "Saving…" : "Save New Date"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </PermissionGuard>
   );
 }
