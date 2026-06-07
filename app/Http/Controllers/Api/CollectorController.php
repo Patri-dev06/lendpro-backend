@@ -32,6 +32,7 @@ class CollectorController extends Controller
                 'fb_messenger'    => $c->fb_messenger,
                 'email'           => $c->email,
                 'drivers_license' => $c->drivers_license,
+                'approval_status' => $c->approval_status,
                 'assigned'        => $c->clients->count(),
                 'expected'        => (float) $activeLoans->sum('daily_payment'),
                 'actual'          => (float) $todayActual,
@@ -60,12 +61,29 @@ class CollectorController extends Controller
             'drivers_license' => 'nullable|string|max:100',
         ]);
 
-        // Auto-generate code using a temp placeholder, then set it from the real ID
+        // Normalize to uppercase
+        foreach (['name', 'area', 'address', 'mothers_name', 'fathers_name', 'place_of_birth'] as $field) {
+            if (isset($data[$field])) {
+                $data[$field] = strtoupper($data[$field]);
+            }
+        }
+
+        // Duplicate detection: same name among approved collectors
+        $dup = Collector::whereRaw('UPPER(name) = ?', [strtoupper($data['name'])])
+            ->where('approval_status', 'approved')
+            ->exists();
+
+        $data['approval_status'] = $dup ? 'pending_approval' : 'approved';
+
         $collector = Collector::create(array_merge($data, ['code' => 'COLL-TEMP']));
         $collector->update(['code' => 'COLL-' . str_pad($collector->id, 4, '0', STR_PAD_LEFT)]);
         $collector->refresh();
 
-        AuditLog::record('CREATE_COLLECTOR', $collector->code, "Created collector {$collector->name}");
+        AuditLog::record(
+            'CREATE_COLLECTOR',
+            $collector->code,
+            "Created collector {$collector->name}" . ($dup ? ' — pending approval (duplicate name)' : '')
+        );
 
         return response()->json($collector, 201);
     }
@@ -74,7 +92,7 @@ class CollectorController extends Controller
     {
         $collector->load(['loans.client', 'payments', 'clients.loans']);
 
-        $activeLoans  = $collector->loans->whereNotIn('status', ['paid']);
+        $activeLoans   = $collector->loans->whereNotIn('status', ['paid']);
         $expectedDaily = (float) $activeLoans->sum('daily_payment');
         $payments      = $collector->payments;
 
@@ -104,44 +122,45 @@ class CollectorController extends Controller
                 'address'    => $cl->address,
                 'status'     => $cl->status,
                 'loan'       => $activeLoan ? [
-                    'id'              => $activeLoan->id,
-                    'number'          => $activeLoan->number,
-                    'loan_type'       => $activeLoan->loan_type,
-                    'principal'       => $activeLoan->principal,
-                    'total_receivable'=> $activeLoan->total_receivable,
-                    'current_balance' => $activeLoan->current_balance,
-                    'daily_payment'   => $activeLoan->daily_payment,
-                    'due_date'        => $activeLoan->due_date,
-                    'status'          => $activeLoan->status,
+                    'id'               => $activeLoan->id,
+                    'number'           => $activeLoan->number,
+                    'loan_type'        => $activeLoan->loan_type,
+                    'principal'        => $activeLoan->principal,
+                    'total_receivable' => $activeLoan->total_receivable,
+                    'current_balance'  => $activeLoan->current_balance,
+                    'daily_payment'    => $activeLoan->daily_payment,
+                    'due_date'         => $activeLoan->due_date,
+                    'status'           => $activeLoan->status,
                 ] : null,
             ];
         })->values();
 
         return response()->json([
-            'id'               => $collector->id,
-            'name'             => $collector->name,
-            'code'             => $collector->code,
-            'area'             => $collector->area,
-            'phone'            => $collector->phone,
-            'address'          => $collector->address,
-            'mothers_name'     => $collector->mothers_name,
-            'fathers_name'     => $collector->fathers_name,
-            'place_of_birth'   => $collector->place_of_birth,
-            'date_of_birth'    => $collector->date_of_birth,
-            'fb_messenger'     => $collector->fb_messenger,
-            'email'            => $collector->email,
-            'drivers_license'  => $collector->drivers_license,
-            'assigned'         => $collector->clients->count(),
-            'expected_daily'   => round($expectedDaily, 2),
-            'expected_month'   => round($expectedDaily * 26, 2),
-            'collected_today'  => round($collectedToday, 2),
-            'collected_week'   => round($collectedWeek, 2),
-            'collected_month'  => round($collectedMonth, 2),
-            'collected_year'   => round($collectedYear, 2),
-            'overdue'          => (int) $activeLoans->where('status', 'overdue')->count(),
-            'past_due'         => (int) $activeLoans->where('status', 'past-due')->count(),
+            'id'                 => $collector->id,
+            'name'               => $collector->name,
+            'code'               => $collector->code,
+            'area'               => $collector->area,
+            'phone'              => $collector->phone,
+            'address'            => $collector->address,
+            'mothers_name'       => $collector->mothers_name,
+            'fathers_name'       => $collector->fathers_name,
+            'place_of_birth'     => $collector->place_of_birth,
+            'date_of_birth'      => $collector->date_of_birth,
+            'fb_messenger'       => $collector->fb_messenger,
+            'email'              => $collector->email,
+            'drivers_license'    => $collector->drivers_license,
+            'approval_status'    => $collector->approval_status,
+            'assigned'           => $collector->clients->count(),
+            'expected_daily'     => round($expectedDaily, 2),
+            'expected_month'     => round($expectedDaily * 26, 2),
+            'collected_today'    => round($collectedToday, 2),
+            'collected_week'     => round($collectedWeek, 2),
+            'collected_month'    => round($collectedMonth, 2),
+            'collected_year'     => round($collectedYear, 2),
+            'overdue'            => (int) $activeLoans->where('status', 'overdue')->count(),
+            'past_due'           => (int) $activeLoans->where('status', 'past-due')->count(),
             'monthly_collection' => $monthlyCollection,
-            'clients'          => $clientLoans,
+            'clients'            => $clientLoans,
         ]);
     }
 
@@ -161,15 +180,50 @@ class CollectorController extends Controller
             'drivers_license' => 'nullable|string|max:100',
         ]);
 
+        // Normalize to uppercase
+        foreach (['name', 'area', 'address', 'mothers_name', 'fathers_name', 'place_of_birth'] as $field) {
+            if (isset($data[$field])) {
+                $data[$field] = strtoupper($data[$field]);
+            }
+        }
+
         $collector->update($data);
         AuditLog::record('UPDATE_COLLECTOR', $collector->code, "Updated collector {$collector->name}");
 
         return response()->json($collector);
     }
 
+    public function approve(Collector $collector): JsonResponse
+    {
+        if ($collector->approval_status !== 'pending_approval') {
+            return response()->json(['message' => 'Collector is not pending approval.'], 422);
+        }
+
+        $collector->update(['approval_status' => 'approved']);
+        AuditLog::record('APPROVE_COLLECTOR', $collector->code, "Approved duplicate collector {$collector->name}");
+
+        return response()->json($collector);
+    }
+
+    public function reject(Collector $collector): JsonResponse
+    {
+        if ($collector->approval_status !== 'pending_approval') {
+            return response()->json(['message' => 'Collector is not pending approval.'], 422);
+        }
+
+        $code = $collector->code;
+        $name = $collector->name;
+        $collector->delete();
+
+        AuditLog::record('REJECT_COLLECTOR', $code, "Rejected duplicate collector {$name}");
+
+        return response()->json(['message' => 'Collector rejected and removed.']);
+    }
+
     public function destroy(Collector $collector): JsonResponse
     {
         $collector->delete();
+        AuditLog::record('DELETE_COLLECTOR', $collector->code, "Deleted collector {$collector->name}");
         return response()->json(['message' => 'Collector deleted.']);
     }
 }

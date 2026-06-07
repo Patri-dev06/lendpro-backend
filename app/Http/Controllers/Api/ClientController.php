@@ -53,6 +53,13 @@ class ClientController extends Controller
             'longitude'    => 'nullable|numeric|between:-180,180',
         ]);
 
+        // Normalize to uppercase
+        foreach (['first_name', 'middle_name', 'last_name', 'store_name', 'address'] as $field) {
+            if (isset($data[$field])) {
+                $data[$field] = strtoupper($data[$field]);
+            }
+        }
+
         // Compose full name from parts
         $nameParts = array_filter([$data['first_name'], $data['middle_name'] ?? null, $data['last_name']]);
         $data['name'] = implode(' ', $nameParts);
@@ -113,6 +120,13 @@ class ClientController extends Controller
             'latitude'     => 'nullable|numeric|between:-90,90',
             'longitude'    => 'nullable|numeric|between:-180,180',
         ]);
+
+        // Normalize to uppercase
+        foreach (['first_name', 'middle_name', 'last_name', 'store_name', 'address'] as $field) {
+            if (isset($data[$field])) {
+                $data[$field] = strtoupper($data[$field]);
+            }
+        }
 
         // Recompose full name if any name part is being updated
         $firstName  = $data['first_name']  ?? $client->first_name;
