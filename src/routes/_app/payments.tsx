@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { BookOpen, Lock } from "lucide-react";
 import { useRole } from "@/lib/role-context";
+import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AccessRestricted } from "@/components/payments/AccessRestricted";
@@ -18,7 +19,7 @@ export const Route = createFileRoute("/_app/payments")({
 
 function PaymentsPage() {
   const { role } = useRole();
-  const isClerk = role === "accounting_clerk";
+  const isClerk = hasPermission(role, "payments:write");
 
   return (
     <PermissionGuard permission="payments:read">

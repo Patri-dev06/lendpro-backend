@@ -206,47 +206,29 @@ ${content}
               <p className="text-xs text-muted-foreground">For reconciliation with client's own record (blue card)</p>
             </div>
             <div ref={printRef} className="overflow-x-auto">
-              <Table className="min-w-150">
+              <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Day #</TableHead>
-                    <TableHead>Scheduled</TableHead>
                     <TableHead>Date Paid</TableHead>
-                    <TableHead className="text-right">Daily Due</TableHead>
                     <TableHead className="text-right">Amount Paid</TableHead>
-                    <TableHead className="text-right">Running Balance</TableHead>
-                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {ledger.schedule.map((r, i) => (
-                    <TableRow key={r.day} className={r.status === "pending" ? "opacity-50" : ""}>
-                      <TableCell className="num text-xs text-muted-foreground">{i + 1}</TableCell>
-                      <TableCell className="text-sm">{formatDate(r.scheduled_date)}</TableCell>
+                  {ledger.schedule.filter((r) => r.actual > 0).map((r) => (
+                    <TableRow key={r.day}>
                       <TableCell className="text-sm">
-                        {r.payment_date
-                          ? <span className="text-success font-medium">{formatDate(r.payment_date)}</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell className="text-right num">{formatPHP(r.expected)}</TableCell>
-                      <TableCell className="text-right num font-medium">
-                        {r.actual > 0
-                          ? <span className="text-success">{formatPHP(r.actual)}</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell className="text-right num">{formatPHP(r.balance_after)}</TableCell>
-                      <TableCell>
-                        <span className={`text-xs font-medium capitalize ${r.status === "paid" ? "text-success" : r.status === "partial" ? "text-amber-600" : "text-muted-foreground"}`}>
-                          {r.status}
+                        <span className="text-success font-medium">
+                          {formatDate(r.payment_date ?? r.scheduled_date)}
                         </span>
+                      </TableCell>
+                      <TableCell className="text-right num font-medium">
+                        <span className="text-success">{formatPHP(r.actual)}</span>
                       </TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="border-t-2 bg-muted/40 font-bold">
-                    <TableCell colSpan={4} className="text-sm font-semibold">Total</TableCell>
+                    <TableCell className="text-sm font-semibold">Total</TableCell>
                     <TableCell className="text-right num font-semibold text-success">{formatPHP(ledger.total_paid)}</TableCell>
-                    <TableCell className="text-right num font-semibold">{formatPHP(ledger.loan.current_balance)}</TableCell>
-                    <TableCell />
                   </TableRow>
                 </TableBody>
               </Table>

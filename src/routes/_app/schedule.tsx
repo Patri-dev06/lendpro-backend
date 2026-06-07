@@ -10,6 +10,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { formatPHP, formatDate } from "@/lib/format";
+
+function fmtDate(s: string): string {
+  const d = new Date(s.replace(" ", "T"));
+  return isNaN(d.getTime()) ? s : formatDate(d);
+}
 import { PermissionGuard } from "@/components/shared/AccessRestricted";
 import { toast } from "sonner";
 
@@ -32,6 +37,7 @@ interface ApiLoan {
 interface ScheduleRow {
   id: number;
   scheduled_date: string;
+  payment_date: string | null;
   expected: number;
   actual: number;
   previous_balance: number;
@@ -51,7 +57,6 @@ function SchedulePage() {
   // Filters
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate]     = useState("");
-  const [statusF, setStatusF]   = useState("all");
 
   const fetchLoans = useCallback(async () => {
     if (!token) return;
@@ -85,9 +90,9 @@ function SchedulePage() {
   const loan = loans.find((l) => l.id === loanId);
 
   const filtered = rows.filter((r) => {
-    if (statusF !== "all" && r.status !== statusF) return false;
-    if (fromDate && r.scheduled_date < fromDate) return false;
-    if (toDate   && r.scheduled_date > toDate)   return false;
+    if (!r.actual) return false;
+    if (fromDate && (r.payment_date ?? r.scheduled_date) < fromDate) return false;
+    if (toDate   && (r.payment_date ?? r.scheduled_date) > toDate)   return false;
     return true;
   });
 
@@ -96,10 +101,10 @@ function SchedulePage() {
   }
 
   function handleExport() {
-    if (!loan || rows.length === 0) return;
-    const header = "Date,Expected,Actual,Prev Balance,Balance After,Status,Remarks";
-    const csv = rows.map((r) =>
-      [r.scheduled_date, r.expected, r.actual, r.previous_balance, r.balance_after, r.status, r.remarks ?? ""].join(",")
+    if (!loan || filtered.length === 0) return;
+    const header = "Date Paid,Amount Paid";
+    const csv = filtered.map((r) =>
+      [r.payment_date ?? r.scheduled_date, r.actual].join(",")
     ).join("\n");
     const blob = new Blob([header + "\n" + csv], { type: "text/csv" });
     const url  = URL.createObjectURL(blob);
@@ -170,20 +175,9 @@ function SchedulePage() {
           )}
           <Input type="date" className="h-9 w-44" value={fromDate} onChange={(e) => setFromDate(e.target.value)} placeholder="From" />
           <Input type="date" className="h-9 w-44" value={toDate}   onChange={(e) => setToDate(e.target.value)}   placeholder="To" />
-          <Select value={statusF} onValueChange={setStatusF}>
-            <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All status</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-              <SelectItem value="partial">Partial</SelectItem>
-              <SelectItem value="missed">Missed</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="catch-up">Catch-Up</SelectItem>
-            </SelectContent>
-          </Select>
-          {(fromDate || toDate || statusF !== "all") && (
+          {(fromDate || toDate) && (
             <Button variant="ghost" size="sm" className="h-9 text-xs"
-              onClick={() => { setFromDate(""); setToDate(""); setStatusF("all"); }}>
+              onClick={() => { setFromDate(""); setToDate(""); }}>
               Clear filters
             </Button>
           )}
@@ -191,36 +185,26 @@ function SchedulePage() {
 
         {/* Table */}
         <div className="overflow-x-auto">
-          <Table className="min-w-175">
+          <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead className="text-right">Expected</TableHead>
-                <TableHead className="text-right">Actual</TableHead>
-                <TableHead className="text-right">Previous balance</TableHead>
-                <TableHead className="text-right">Balance after</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Remarks</TableHead>
+                <TableHead>Date Paid</TableHead>
+                <TableHead className="text-right">Amount Paid</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loadingRows ? (
-                <tr><td colSpan={7} className="py-12 text-center text-sm text-muted-foreground">
+                <tr><td colSpan={2} className="py-12 text-center text-sm text-muted-foreground">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                 </td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} className="py-12 text-center text-sm text-muted-foreground">
-                  {rows.length === 0 ? "No schedule rows found." : "No rows match the current filters."}
+                <tr><td colSpan={2} className="py-12 text-center text-sm text-muted-foreground">
+                  {rows.length === 0 ? "No schedule rows found." : "No payments recorded yet."}
                 </td></tr>
               ) : filtered.map((r) => (
                 <TableRow key={r.id}>
-                  <TableCell>{formatDate(r.scheduled_date)}</TableCell>
-                  <TableCell className="text-right num">{formatPHP(r.expected)}</TableCell>
+                  <TableCell>{fmtDate(r.payment_date ?? r.scheduled_date)}</TableCell>
                   <TableCell className="text-right num font-medium">{formatPHP(r.actual)}</TableCell>
-                  <TableCell className="text-right num text-muted-foreground">{formatPHP(r.previous_balance)}</TableCell>
-                  <TableCell className="text-right num">{formatPHP(r.balance_after)}</TableCell>
-                  <TableCell><StatusBadge status={r.status} /></TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{r.remarks ?? "—"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
