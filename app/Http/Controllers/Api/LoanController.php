@@ -131,6 +131,40 @@ class LoanController extends Controller
         return response()->json($loan->fresh()->load(['client', 'collector', 'scheduleRows']));
     }
 
+    public function editPending(Request $request, Loan $loan): JsonResponse
+    {
+        if ($loan->status !== 'pending') {
+            return response()->json(['message' => 'Only pending loans can be edited.'], 422);
+        }
+
+        $data = $request->validate([
+            'loan_type'      => 'sometimes|in:new-loan,reloan,reconstruct',
+            'principal'      => 'required|numeric|min:1',
+            'interest'       => 'required|numeric|min:0',
+            'service_charge' => 'required|numeric|min:0',
+            'daily_payment'  => 'required|numeric|min:1',
+            'term_days'      => 'required|integer|min:1',
+            'holiday_count'  => 'sometimes|integer|min:0|max:5',
+            'release_date'   => 'required|date',
+            'remarks'        => 'nullable|string',
+        ]);
+
+        $data['holiday_count']     = $data['holiday_count'] ?? $loan->holiday_count;
+        $holidays                  = array_column(json_decode(Setting::get('holidays', '[]'), true) ?? [], 'date');
+        $data['total_receivable']  = $data['principal'] + $data['interest'];
+        $data['current_balance']   = $data['total_receivable'];
+        $data['due_date']          = Loan::computeDueDate($data['release_date'], $data['term_days'] + $data['holiday_count'], $holidays)->toDateString();
+        $data['expected_end_date'] = $data['due_date'];
+
+        DB::transaction(function () use ($loan, $data, $holidays) {
+            $loan->update($data);
+            $loan->generateSchedule($holidays);
+            AuditLog::record('EDIT_PENDING_LOAN', $loan->number, "Edited pending loan {$loan->number} details");
+        });
+
+        return response()->json($loan->fresh()->load(['client', 'collector', 'scheduleRows']));
+    }
+
     public function reschedule(Request $request, Loan $loan): JsonResponse
     {
         if ($loan->status !== 'pending') {
