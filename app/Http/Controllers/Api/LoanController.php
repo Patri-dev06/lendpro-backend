@@ -185,6 +185,72 @@ class LoanController extends Controller
         return response()->json($loan->penalties()->get());
     }
 
+    public function reconstruct(Request $request, Loan $loan): JsonResponse
+    {
+        if (in_array($loan->status, ['paid', 'pending'])) {
+            return response()->json(['message' => 'Only active loans can be reconstructed.'], 422);
+        }
+
+        $data = $request->validate([
+            'interest'       => 'required|numeric|min:0',
+            'service_charge' => 'required|numeric|min:0',
+            'daily_payment'  => 'required|numeric|min:1',
+            'term_days'      => 'required|integer|min:1',
+            'holiday_count'  => 'sometimes|integer|min:0|max:5',
+            'release_date'   => 'required|date',
+            'remarks'        => 'nullable|string',
+        ]);
+
+        $data['holiday_count'] = $data['holiday_count'] ?? 0;
+
+        $holidays  = array_column(json_decode(Setting::get('holidays', '[]'), true) ?? [], 'date');
+        $principal = $loan->current_balance;
+        $dueDate   = Loan::computeDueDate($data['release_date'], $data['term_days'] + $data['holiday_count'], $holidays)->toDateString();
+
+        $newLoan = DB::transaction(function () use ($loan, $data, $principal, $dueDate, $holidays) {
+            $loan->update(['status' => 'paid']);
+
+            $newLoan = Loan::create([
+                'loan_type'         => 'reconstruct',
+                'client_id'         => $loan->client_id,
+                'collector_id'      => $loan->collector_id,
+                'principal'         => $principal,
+                'interest'          => $data['interest'],
+                'service_charge'    => $data['service_charge'],
+                'daily_payment'     => $data['daily_payment'],
+                'term_days'         => $data['term_days'],
+                'holiday_count'     => $data['holiday_count'],
+                'release_date'      => $data['release_date'],
+                'total_receivable'  => $principal + $data['interest'],
+                'current_balance'   => $principal + $data['interest'],
+                'due_date'          => $dueDate,
+                'expected_end_date' => $dueDate,
+                'number'            => Loan::generateNumber(),
+                'status'            => 'pending',
+                'remarks'           => $data['remarks'] ?? "Reconstructed from {$loan->number}",
+            ]);
+
+            $newLoan->generateSchedule($holidays);
+
+            AuditLog::record(
+                'RECONSTRUCT_LOAN',
+                $loan->number,
+                "Reconstructed loan {$loan->number} (balance ₱" . number_format($principal, 2) . ") → new loan {$newLoan->number}"
+            );
+
+            Notification::notify(
+                'loan_reconstructed',
+                'Loan Reconstructed',
+                "Loan {$loan->number} reconstructed to {$newLoan->number} for {$loan->client->name} (₱" . number_format($principal, 2) . " carried over).",
+                ['admin', 'manager', 'accounting_clerk']
+            );
+
+            return $newLoan;
+        });
+
+        return response()->json($newLoan->load(['client', 'collector', 'scheduleRows']), 201);
+    }
+
     public function regenerateSchedule(Loan $loan): JsonResponse
     {
         if ($loan->status === 'paid') {

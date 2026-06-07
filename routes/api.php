@@ -69,6 +69,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('loans/{loan}',                      [LoanController::class, 'update']);
         Route::patch('loans/{loan}',                    [LoanController::class, 'update']);
         Route::post('loans/{loan}/release',             [LoanController::class, 'release']);
+        Route::post('loans/{loan}/reconstruct',         [LoanController::class, 'reconstruct']);
         Route::patch('loans/{loan}/reschedule',         [LoanController::class, 'reschedule']);
         Route::post('loans/{loan}/cancel',              [LoanController::class, 'cancel']);
     });
