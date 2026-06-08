@@ -18,6 +18,9 @@ import { PermissionGuard } from "@/components/shared/AccessRestricted";
 interface Collector {
   id: number;
   name: string;
+  first_name: string | null;
+  middle_name: string | null;
+  last_name: string | null;
   code: string;
   area: string;
   phone: string | null;
@@ -346,7 +349,9 @@ interface FormDialogProps {
 function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: FormDialogProps) {
   const editing = !!collector;
 
-  const [name, setName]             = useState("");
+  const [firstName, setFirstName]   = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [lastName, setLastName]     = useState("");
   const [area, setArea]             = useState("");
   const [phone, setPhone]           = useState("");
   const [address, setAddress]       = useState("");
@@ -362,7 +367,10 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
 
   useEffect(() => {
     if (open) {
-      setName(collector?.name ?? "");
+      const parts = (collector?.name ?? "").split(" ");
+      setFirstName(collector?.first_name ?? parts[0] ?? "");
+      setLastName(collector?.last_name ?? (parts.length > 1 ? parts[parts.length - 1] : ""));
+      setMiddleName(collector?.middle_name ?? (parts.length > 2 ? parts.slice(1, -1).join(" ") : ""));
       setArea(collector?.area ?? "");
       setPhone(collector?.phone?.replace(/^\+?63/, "").replace(/^0/, "") ?? "");
       setAddress(collector?.address ?? "");
@@ -379,11 +387,11 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!name.trim())          e.name         = "Full name is required.";
+    if (!firstName.trim())     e.firstName    = "Given name is required.";
+    if (!lastName.trim())      e.lastName     = "Surname is required.";
     if (!area.trim())          e.area         = "Area / route is required.";
     if (!phone.trim())         e.phone        = "Cellphone number is required.";
     else if (phone.replace(/\D/g, "").length !== 10) e.phone = "Enter 10 digits after +63.";
-    if (!address.trim())       e.address      = "Address is required.";
     if (!mothersName.trim())   e.mothersName  = "Mother's name is required.";
     if (!fathersName.trim())   e.fathersName  = "Father's name is required.";
     if (!placeOfBirth.trim())  e.placeOfBirth = "Place of birth is required.";
@@ -399,10 +407,12 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
     try {
       const localPhone = "0" + phone.replace(/\D/g, "");
       const body = {
-        name:            name.trim(),
+        first_name:      firstName.trim(),
+        middle_name:     middleName.trim() || null,
+        last_name:       lastName.trim(),
         area:            area.trim(),
         phone:           localPhone,
-        address:         address.trim(),
+        address:         address.trim() || null,
         mothers_name:    mothersName.trim(),
         fathers_name:    fathersName.trim(),
         place_of_birth:  placeOfBirth.trim(),
@@ -448,11 +458,25 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 py-1">
 
-          <FF label="Full name" error={errors.name} full>
-            <Input value={name}
-              onChange={(e) => { setName(e.target.value.toUpperCase()); clrErr("name"); }}
-              placeholder="MARIA SANTOS" disabled={saving}
-              className={`uppercase ${errors.name ? "border-destructive" : ""}`} />
+          <FF label="Given name" error={errors.firstName}>
+            <Input value={firstName}
+              onChange={(e) => { setFirstName(e.target.value.toUpperCase()); clrErr("firstName"); }}
+              placeholder="MARIA" disabled={saving}
+              className={`uppercase ${errors.firstName ? "border-destructive" : ""}`} />
+          </FF>
+
+          <FF label="Surname" error={errors.lastName}>
+            <Input value={lastName}
+              onChange={(e) => { setLastName(e.target.value.toUpperCase()); clrErr("lastName"); }}
+              placeholder="SANTOS" disabled={saving}
+              className={`uppercase ${errors.lastName ? "border-destructive" : ""}`} />
+          </FF>
+
+          <FF label="Middle name (optional)" full>
+            <Input value={middleName}
+              onChange={(e) => setMiddleName(e.target.value.toUpperCase())}
+              placeholder="DELA CRUZ" disabled={saving}
+              className="uppercase" />
           </FF>
 
           <FF label="Area / Route" error={errors.area}>
@@ -481,12 +505,12 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
               placeholder="collector@email.com" disabled={saving} className={errors.email ? "border-destructive" : ""} />
           </FF>
 
-          <FF label="Address" error={errors.address} full>
+          <FF label="Address (optional)" full>
             <Textarea value={address}
-              onChange={(e) => { setAddress(e.target.value.toUpperCase()); clrErr("address"); }}
-              placeholder="HOUSE / UNIT NO., STREET, BARANGAY, CITY, PROVINCE"
+              onChange={(e) => setAddress(e.target.value.toUpperCase())}
+              placeholder="HOUSE / UNIT NO., BARANGAY, CITY, PROVINCE"
               rows={2} disabled={saving}
-              className={`uppercase ${errors.address ? "border-destructive" : ""}`} />
+              className="uppercase" />
           </FF>
 
           <FF label="Mother's full name" error={errors.mothersName}>

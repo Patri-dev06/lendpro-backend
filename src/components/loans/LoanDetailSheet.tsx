@@ -78,8 +78,7 @@ export function LoanDetailSheet({ loan, open, onClose, onReconstructed }: Props)
 
   const canReconstruct =
     (role === "admin" || role === "manager") &&
-    loan.status !== "paid" &&
-    loan.status !== "pending";
+    (loan.status === "overdue" || loan.status === "past-due");
 
   function openReconstruct() {
     const p = loan!.current_balance;

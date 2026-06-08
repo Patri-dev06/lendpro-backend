@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/finance/PageHeader";
 import { StatusBadge } from "@/components/finance/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -205,16 +205,17 @@ function SchedulePage() {
               <Loader2 className="h-4 w-4 animate-spin" />Loading loans…
             </div>
           ) : (
-            <Select value={String(loanId ?? "")} onValueChange={(v) => setLoanId(Number(v))}>
-              <SelectTrigger className="h-9 w-72"><SelectValue placeholder="Select a loan…" /></SelectTrigger>
-              <SelectContent>
-                {loans.map((l) => (
-                  <SelectItem key={l.id} value={String(l.id)}>
-                    {l.number} — {l.client.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableCombobox
+              options={loans.map((l) => ({
+                value: String(l.id),
+                label: `${l.number} — ${l.client.name}`,
+                sub: l.client.store_name,
+              }))}
+              value={String(loanId ?? "")}
+              onChange={(v) => setLoanId(Number(v))}
+              placeholder="Search by loan #, client name…"
+              className="w-72"
+            />
           )}
           <Input type="date" className="h-9 w-44" value={fromDate} onChange={(e) => setFromDate(e.target.value)} placeholder="From" />
           <Input type="date" className="h-9 w-44" value={toDate}   onChange={(e) => setToDate(e.target.value)}   placeholder="To" />

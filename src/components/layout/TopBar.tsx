@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { Search, ChevronDown, LogOut, Settings, KeyRound } from "lucide-react";
+import { ChevronDown, LogOut, Settings, KeyRound } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -18,14 +17,6 @@ export function TopBar() {
   const navigate = useNavigate();
   const { role, user, logout } = useRole();
   const [changePwOpen, setChangePwOpen] = useState(false);
-  const [globalSearch, setGlobalSearch] = useState("");
-
-  function handleSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" && globalSearch.trim()) {
-      navigate({ to: "/clients", search: { q: globalSearch.trim() } });
-      setGlobalSearch("");
-    }
-  }
   const displayName = user?.name ?? "User";
   const initials = displayName.split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
@@ -45,17 +36,6 @@ export function TopBar() {
         <span className="font-display text-sm font-bold">
           <span className="text-amber-500">Buena</span><span className="text-blue-700">Mano</span>
         </span>
-      </div>
-
-      <div className="relative mx-2 hidden flex-1 max-w-sm md:block">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={globalSearch}
-          onChange={(e) => setGlobalSearch(e.target.value)}
-          onKeyDown={handleSearchKey}
-          placeholder="Search clients… (press Enter)"
-          className="h-8 rounded-lg pl-8 text-sm bg-muted/50 border-0 focus-visible:ring-1"
-        />
       </div>
 
       <div className="ml-auto flex items-center gap-1">

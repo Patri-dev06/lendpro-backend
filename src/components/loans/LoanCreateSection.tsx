@@ -182,8 +182,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
     const e: Record<string, string> = {};
     if (!clientId)      e.client    = "Select a client.";
     if (principal <= 0) e.principal = "Principal must be greater than 0.";
-    if (sc < 0)            e.sc        = "Processing fee cannot be negative.";
-    if (daily <= 0)        e.daily     = "Daily payment must be greater than 0.";
+    if (daily <= 0)     e.daily     = "Daily payment must be greater than 0.";
     if (!date)             e.date      = "Release date is required.";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -370,16 +369,11 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
             </Select>
           </Field>
 
-          <Field label={`Processing fee (₱)${defaultScRate > 0 ? ` — ${defaultScRate}% of principal` : ""}`} error={errors.sc}>
+          <Field label={`Processing fee (₱)${defaultScRate > 0 ? ` — ${defaultScRate}% of principal` : ""}`}>
             <Input
-              type="number" min={0} value={sc}
-              className={errors.sc ? "border-destructive" : ""}
-              onChange={(e) => {
-                const v = Number(e.target.value) || 0;
-                setSc(v);
-                recalcDaily(principal, interest, v, termDays);
-                setErrors((err) => ({ ...err, sc: "" }));
-              }}
+              value={formatPHP(sc)}
+              readOnly
+              className="bg-muted/40 text-muted-foreground"
             />
           </Field>
 

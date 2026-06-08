@@ -448,7 +448,6 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
     if (!province)         e.province    = "Province is required.";
     if (!city)             e.city        = "City / Municipality is required.";
     if (!barangay.trim())  e.barangay    = "Barangay is required.";
-    if (!street.trim())    e.street      = "Street is required.";
     if (!collectorId)      e.collectorId = "Please assign a collector.";
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
                            e.email       = "Invalid email address.";
@@ -593,10 +592,9 @@ function AddClientDialog({ collectors, token, onSaved, onSavedAndCreateLoan, onC
           )}
         </Field>
 
-        <Field label="Street" full error={errors.street}>
-          <Input value={street} onChange={(e) => { setStreet(e.target.value); setErrors((p) => ({ ...p, street: "" })); }}
-            placeholder="e.g. 123 Rizal St." disabled={loading}
-            className={errors.street ? "border-destructive" : ""} />
+        <Field label="Street (optional)" full>
+          <Input value={street} onChange={(e) => setStreet(e.target.value)}
+            placeholder="e.g. 123 Rizal St." disabled={loading} />
         </Field>
 
         <Field label="Client type">
@@ -711,7 +709,6 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
     if (!province)         e.province  = "Province is required.";
     if (!city)             e.city      = "City / Municipality is required.";
     if (!barangay.trim())  e.barangay  = "Barangay is required.";
-    if (!street.trim())    e.street    = "Street is required.";
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
                            e.email     = "Invalid email address.";
     if (latitude && (isNaN(Number(latitude)) || Number(latitude) < -90 || Number(latitude) > 90))
@@ -843,10 +840,9 @@ function EditClientDialog({ client, collectors, token, onSaved, onCancel }: Edit
           )}
         </Field>
 
-        <Field label="Street" full error={errors.street}>
-          <Input value={street} onChange={(e) => { setStreet(e.target.value); setErrors((p) => ({ ...p, street: "" })); }}
-            placeholder="e.g. 123 Rizal St." disabled={loading}
-            className={errors.street ? "border-destructive" : ""} />
+        <Field label="Street (optional)" full>
+          <Input value={street} onChange={(e) => setStreet(e.target.value)}
+            placeholder="e.g. 123 Rizal St." disabled={loading} />
         </Field>
 
         <Field label="Client type">
