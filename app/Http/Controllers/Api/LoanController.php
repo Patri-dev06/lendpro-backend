@@ -243,6 +243,7 @@ class LoanController extends Controller
 
         $newLoan = DB::transaction(function () use ($loan, $data, $principal, $dueDate, $holidays) {
             $loan->update(['status' => 'paid']);
+            $loan->client->update(['type' => 'renew']);
 
             $newLoan = Loan::create([
                 'loan_type'         => 'reconstruct',

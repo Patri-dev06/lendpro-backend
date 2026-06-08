@@ -59,7 +59,7 @@ class PaymentController extends Controller
             ]);
 
             if ($newBalance <= 0) {
-                $loan->client->update(['status' => 'paid']);
+                $loan->client->update(['status' => 'paid', 'type' => 'renew']);
             }
 
             $scheduleRow = ScheduleRow::where('loan_id', $loan->id)
@@ -168,6 +168,10 @@ class PaymentController extends Controller
                     'current_balance' => $newLoanBalance,
                     'status'          => $newLoanBalance <= 0 ? 'paid' : $loan->status,
                 ]);
+
+                if ($newLoanBalance <= 0) {
+                    $loan->client->update(['status' => 'paid', 'type' => 'renew']);
+                }
 
                 $payment->update([
                     'amount'      => $newAmt,
@@ -278,7 +282,7 @@ class PaymentController extends Controller
                 ]);
 
                 if ($newBalance <= 0) {
-                    $loan->client->update(['status' => 'paid']);
+                    $loan->client->update(['status' => 'paid', 'type' => 'renew']);
                 }
 
                 $scheduleRow = ScheduleRow::where('loan_id', $loan->id)

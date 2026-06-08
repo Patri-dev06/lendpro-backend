@@ -21,6 +21,9 @@ class CollectorController extends Controller
             return [
                 'id'              => $c->id,
                 'name'            => $c->name,
+                'first_name'      => $c->first_name,
+                'middle_name'     => $c->middle_name,
+                'last_name'       => $c->last_name,
                 'code'            => $c->code,
                 'area'            => $c->area,
                 'phone'           => $c->phone,
@@ -48,10 +51,12 @@ class CollectorController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'name'            => 'required|string|max:255',
+            'first_name'      => 'required|string|max:255',
+            'middle_name'     => 'nullable|string|max:255',
+            'last_name'       => 'required|string|max:255',
             'area'            => 'required|string|max:255',
             'phone'           => 'required|string|max:20',
-            'address'         => 'required|string',
+            'address'         => 'nullable|string',
             'mothers_name'    => 'required|string|max:255',
             'fathers_name'    => 'required|string|max:255',
             'place_of_birth'  => 'required|string|max:255',
@@ -62,14 +67,19 @@ class CollectorController extends Controller
         ]);
 
         // Normalize to uppercase
-        foreach (['name', 'area', 'address', 'mothers_name', 'fathers_name', 'place_of_birth'] as $field) {
+        foreach (['first_name', 'middle_name', 'last_name', 'area', 'address', 'mothers_name', 'fathers_name', 'place_of_birth'] as $field) {
             if (isset($data[$field])) {
                 $data[$field] = strtoupper($data[$field]);
             }
         }
 
-        // Duplicate detection: same name among approved collectors
-        $dup = Collector::whereRaw('UPPER(name) = ?', [strtoupper($data['name'])])
+        // Compose full name from parts
+        $nameParts    = array_filter([$data['first_name'], $data['middle_name'] ?? null, $data['last_name']]);
+        $data['name'] = implode(' ', $nameParts);
+
+        // Duplicate detection: same first+last name among approved collectors
+        $dup = Collector::where('first_name', $data['first_name'])
+            ->where('last_name', $data['last_name'])
             ->where('approval_status', 'approved')
             ->exists();
 
@@ -167,7 +177,9 @@ class CollectorController extends Controller
     public function update(Request $request, Collector $collector): JsonResponse
     {
         $data = $request->validate([
-            'name'            => 'sometimes|string|max:255',
+            'first_name'      => 'sometimes|string|max:255',
+            'middle_name'     => 'nullable|string|max:255',
+            'last_name'       => 'sometimes|string|max:255',
             'area'            => 'sometimes|string|max:255',
             'phone'           => 'nullable|string|max:20',
             'address'         => 'nullable|string',
@@ -181,10 +193,19 @@ class CollectorController extends Controller
         ]);
 
         // Normalize to uppercase
-        foreach (['name', 'area', 'address', 'mothers_name', 'fathers_name', 'place_of_birth'] as $field) {
+        foreach (['first_name', 'middle_name', 'last_name', 'area', 'address', 'mothers_name', 'fathers_name', 'place_of_birth'] as $field) {
             if (isset($data[$field])) {
                 $data[$field] = strtoupper($data[$field]);
             }
+        }
+
+        // Recompose full name if any name part is being updated
+        $firstName  = $data['first_name']  ?? $collector->first_name;
+        $middleName = array_key_exists('middle_name', $data) ? $data['middle_name'] : $collector->middle_name;
+        $lastName   = $data['last_name']   ?? $collector->last_name;
+
+        if (isset($data['first_name']) || array_key_exists('middle_name', $data) || isset($data['last_name'])) {
+            $data['name'] = implode(' ', array_filter([$firstName, $middleName, $lastName]));
         }
 
         $collector->update($data);
