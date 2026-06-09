@@ -9,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
+import { PH_PROVINCES, PH_CITIES } from "@/lib/ph-locations";
+import { getBarangays } from "@/lib/ph-barangays";
 import { apiRequest } from "@/lib/api";
 import { useRole, ROLE_LABELS, type Role } from "@/lib/role-context";
 import { PermissionGuard } from "@/components/shared/AccessRestricted";
@@ -18,6 +21,11 @@ import { toast } from "sonner";
 interface SystemUser {
   id: number;
   name: string;
+  first_name: string | null;
+  middle_name: string | null;
+  last_name: string | null;
+  contact_name: string | null;
+  address: string | null;
   email: string;
   role: Role;
   is_approved: boolean;
@@ -248,19 +256,33 @@ interface UserFormProps {
 function UserFormDialog({ open, onOpenChange, token, user, onSaved }: UserFormProps) {
   const editing = !!user;
 
-  const [name, setName]       = useState("");
-  const [email, setEmail]     = useState("");
-  const [role, setRole]       = useState<Role>("collector");
-  const [password, setPassword]   = useState("");
-  const [confirm, setConfirm]     = useState("");
-  const [showPw, setShowPw]       = useState(false);
+  const [firstName, setFirstName]   = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [lastName, setLastName]     = useState("");
+  const [contactName, setContactName] = useState("");
+  const [province, setProvince]     = useState("");
+  const [city, setCity]             = useState("");
+  const [barangay, setBarangay]     = useState("");
+  const [street, setStreet]         = useState("");
+  const [email, setEmail]           = useState("");
+  const [role, setRole]             = useState<Role>("collector");
+  const [password, setPassword]     = useState("");
+  const [confirm, setConfirm]       = useState("");
+  const [showPw, setShowPw]         = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [saving, setSaving]   = useState(false);
-  const [errors, setErrors]   = useState<Record<string, string>>({});
+  const [saving, setSaving]         = useState(false);
+  const [errors, setErrors]         = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (open) {
-      setName(user?.name ?? "");
+      const parts = (user?.name ?? "").split(" ");
+      setFirstName(user?.first_name ?? parts[0] ?? "");
+      setLastName(user?.last_name ?? (parts.length > 1 ? parts[parts.length - 1] : ""));
+      setMiddleName(user?.middle_name ?? (parts.length > 2 ? parts.slice(1, -1).join(" ") : ""));
+      setContactName(user?.contact_name ?? "");
+      const parsed = parseUserAddress(user?.address ?? "");
+      setProvince(parsed.province); setCity(parsed.city);
+      setBarangay(parsed.barangay); setStreet(parsed.street);
       setEmail(user?.email ?? "");
       setRole(user?.role ?? "collector");
       setPassword(""); setConfirm("");
@@ -269,16 +291,22 @@ function UserFormDialog({ open, onOpenChange, token, user, onSaved }: UserFormPr
     }
   }, [open, user]);
 
-  const pwValid   = !password || PW_RULES.every((r) => r.test(password));
-  const mismatch  = !!confirm && password !== confirm;
+  const pwValid  = !password || PW_RULES.every((r) => r.test(password));
+  const mismatch = !!confirm && password !== confirm;
+
+  function clrErr(key: string) { setErrors((x) => ({ ...x, [key]: "" })); }
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!name.trim())  e.name  = "Name is required.";
-    if (!email.trim()) e.email = "Email is required.";
-    if (!editing && !password)          e.password = "Password is required.";
-    if (!editing && !pwValid)           e.password = "Password does not meet requirements.";
-    if ((password || confirm) && mismatch) e.confirm = "Passwords do not match.";
+    if (!firstName.trim())  e.firstName = "Given name is required.";
+    if (!lastName.trim())   e.lastName  = "Surname is required.";
+    if (!province)          e.province  = "Province is required.";
+    if (!city)              e.city      = "City / Municipality is required.";
+    if (!barangay.trim())   e.barangay  = "Barangay is required.";
+    if (!email.trim())      e.email     = "Email is required.";
+    if (!editing && !password)             e.password = "Password is required.";
+    if (!editing && password && !pwValid)  e.password = "Password does not meet requirements.";
+    if ((password || confirm) && mismatch) e.confirm  = "Passwords do not match.";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -287,7 +315,16 @@ function UserFormDialog({ open, onOpenChange, token, user, onSaved }: UserFormPr
     if (!validate() || !token) return;
     setSaving(true);
     try {
-      const body: Record<string, unknown> = { name: name.trim(), email: email.trim(), role };
+      const fullAddress = [street.trim(), barangay.trim(), city, province].filter(Boolean).join(", ");
+      const body: Record<string, unknown> = {
+        first_name:   firstName.trim(),
+        middle_name:  middleName.trim() || null,
+        last_name:    lastName.trim(),
+        contact_name: contactName.trim() || null,
+        address:      fullAddress || null,
+        email:        email.trim(),
+        role,
+      };
       if (password) { body.password = password; body.password_confirmation = confirm; }
 
       const saved = editing
@@ -307,21 +344,91 @@ function UserFormDialog({ open, onOpenChange, token, user, onSaved }: UserFormPr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? "Edit user" : "Add new user"}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3 py-1">
-          <FormField label="Full name" error={errors.name}>
-            <Input value={name} onChange={(e) => { setName(e.target.value); setErrors((x) => ({ ...x, name: "" })); }}
-              placeholder="Juan dela Cruz" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 py-1">
+
+          <FormField label="Given name" error={errors.firstName}>
+            <Input value={firstName}
+              onChange={(e) => { setFirstName(e.target.value.toUpperCase()); clrErr("firstName"); }}
+              placeholder="JUAN" className={`uppercase ${errors.firstName ? "border-destructive" : ""}`} />
           </FormField>
-          <FormField label="Email" error={errors.email}>
-            <Input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setErrors((x) => ({ ...x, email: "" })); }}
-              placeholder="user@buenamano.ph" />
+
+          <FormField label="Surname" error={errors.lastName}>
+            <Input value={lastName}
+              onChange={(e) => { setLastName(e.target.value.toUpperCase()); clrErr("lastName"); }}
+              placeholder="DELA CRUZ" className={`uppercase ${errors.lastName ? "border-destructive" : ""}`} />
           </FormField>
-          <FormField label="Role">
+
+          <FormField label="Middle name (optional)" full>
+            <Input value={middleName}
+              onChange={(e) => setMiddleName(e.target.value.toUpperCase())}
+              placeholder="SANTOS" className="uppercase" />
+          </FormField>
+
+          <FormField label="Contact person (optional)" full>
+            <Input value={contactName}
+              onChange={(e) => setContactName(e.target.value.toUpperCase())}
+              placeholder="Emergency contact name" className="uppercase" />
+          </FormField>
+
+          <FormField label="Province" error={errors.province}>
+            <SearchableCombobox
+              options={PH_PROVINCES.map((p) => ({ value: p, label: p }))}
+              value={province}
+              onChange={(v) => { setProvince(v); setCity(""); setBarangay(""); clrErr("province"); }}
+              placeholder="Search province…"
+              error={!!errors.province}
+            />
+          </FormField>
+
+          <FormField label="City / Municipality" error={errors.city}>
+            <SearchableCombobox
+              options={(PH_CITIES[province] ?? []).map((c) => ({ value: c, label: c }))}
+              value={city}
+              onChange={(v) => { setCity(v); setBarangay(""); clrErr("city"); }}
+              placeholder={province ? "Search city…" : "Select province first"}
+              error={!!errors.city}
+              disabled={!province}
+            />
+          </FormField>
+
+          <FormField label="Barangay" error={errors.barangay} full>
+            {getBarangays(province, city).length > 0 ? (
+              <SearchableCombobox
+                options={getBarangays(province, city).map((b) => ({ value: b, label: b }))}
+                value={barangay}
+                onChange={(v) => { setBarangay(v); clrErr("barangay"); }}
+                placeholder={city ? "Search barangay…" : "Select city first"}
+                error={!!errors.barangay}
+                disabled={!city}
+              />
+            ) : (
+              <Input value={barangay}
+                onChange={(e) => { setBarangay(e.target.value.toUpperCase()); clrErr("barangay"); }}
+                placeholder={city ? "Type barangay name" : "Select city first"}
+                disabled={!city}
+                className={`uppercase ${errors.barangay ? "border-destructive" : ""}`} />
+            )}
+          </FormField>
+
+          <FormField label="Street (optional)" full>
+            <Input value={street}
+              onChange={(e) => setStreet(e.target.value.toUpperCase())}
+              placeholder="HOUSE NO. / STREET NAME" className="uppercase" />
+          </FormField>
+
+          <FormField label="Email" error={errors.email} full>
+            <Input type="email" value={email}
+              onChange={(e) => { setEmail(e.target.value); clrErr("email"); }}
+              placeholder="user@buenamano.ph"
+              className={errors.email ? "border-destructive" : ""} />
+          </FormField>
+
+          <FormField label="Role" full>
             <Select value={role} onValueChange={(v) => setRole(v as Role)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -332,15 +439,15 @@ function UserFormDialog({ open, onOpenChange, token, user, onSaved }: UserFormPr
             </Select>
           </FormField>
 
-          <div className="pt-1">
-            <p className="text-xs font-medium text-muted-foreground mb-2">
+          <div className="sm:col-span-2 pt-1 space-y-3">
+            <p className="text-xs font-medium text-muted-foreground">
               {editing ? "Change password (leave blank to keep current)" : "Password"}
             </p>
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <FormField label="Password" error={errors.password}>
                 <div className="relative">
-                  <Input id="pw" type={showPw ? "text" : "password"} value={password}
-                    onChange={(e) => { setPassword(e.target.value); setErrors((x) => ({ ...x, password: "" })); }}
+                  <Input type={showPw ? "text" : "password"} value={password}
+                    onChange={(e) => { setPassword(e.target.value); clrErr("password"); }}
                     className={`pr-10 ${password && !pwValid ? "border-amber-400" : ""}`}
                     placeholder={editing ? "New password (optional)" : "Create a strong password"} />
                   <button type="button" onClick={() => setShowPw((v) => !v)}
@@ -365,7 +472,7 @@ function UserFormDialog({ open, onOpenChange, token, user, onSaved }: UserFormPr
               <FormField label="Confirm password" error={errors.confirm}>
                 <div className="relative">
                   <Input type={showConfirm ? "text" : "password"} value={confirm}
-                    onChange={(e) => { setConfirm(e.target.value); setErrors((x) => ({ ...x, confirm: "" })); }}
+                    onChange={(e) => { setConfirm(e.target.value); clrErr("confirm"); }}
                     className={`pr-10 ${mismatch ? "border-destructive" : ""}`}
                     placeholder="Re-enter password" />
                   <button type="button" onClick={() => setShowConfirm((v) => !v)}
@@ -373,10 +480,10 @@ function UserFormDialog({ open, onOpenChange, token, user, onSaved }: UserFormPr
                     {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-                {mismatch && <p className="text-xs text-destructive">Passwords do not match.</p>}
               </FormField>
             </div>
           </div>
+
         </div>
 
         <DialogFooter>
@@ -391,9 +498,23 @@ function UserFormDialog({ open, onOpenChange, token, user, onSaved }: UserFormPr
   );
 }
 
-function FormField({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function parseUserAddress(addr: string) {
+  if (!addr) return { street: "", barangay: "", city: "", province: "" };
+  const parts = addr.split(",").map((s) => s.trim());
+  if (parts.length >= 2) {
+    const province = parts[parts.length - 1];
+    const city     = parts[parts.length - 2];
+    if (PH_PROVINCES.includes(province) && (PH_CITIES[province] ?? []).includes(city)) {
+      const rest = parts.slice(0, parts.length - 2);
+      return { street: rest[0] ?? "", barangay: rest.length >= 2 ? rest[rest.length - 1] : "", city, province };
+    }
+  }
+  return { street: addr, barangay: "", city: "", province: "" };
+}
+
+function FormField({ label, error, full, children }: { label: string; error?: string; full?: boolean; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
+    <div className={`space-y-1.5 ${full ? "sm:col-span-2" : ""}`}>
       <Label className="text-xs">{label}</Label>
       {children}
       {error && <p className="text-xs text-destructive">{error}</p>}

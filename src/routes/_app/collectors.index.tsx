@@ -5,8 +5,10 @@ import { PageHeader } from "@/components/finance/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
+import { PH_PROVINCES, PH_CITIES } from "@/lib/ph-locations";
+import { getBarangays } from "@/lib/ph-barangays";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { apiRequest } from "@/lib/api";
@@ -337,6 +339,26 @@ function CollectorsPage() {
   );
 }
 
+/* ---------- Address parser ---------- */
+function parseAddress(addr: string) {
+  if (!addr) return { street: "", barangay: "", city: "", province: "" };
+  const parts = addr.split(",").map((s) => s.trim());
+  if (parts.length >= 2) {
+    const province = parts[parts.length - 1];
+    const city     = parts[parts.length - 2];
+    if (PH_PROVINCES.includes(province) && (PH_CITIES[province] ?? []).includes(city)) {
+      const rest = parts.slice(0, parts.length - 2);
+      return {
+        street:   rest[0] ?? "",
+        barangay: rest.length >= 2 ? rest[rest.length - 1] : "",
+        city,
+        province,
+      };
+    }
+  }
+  return { street: addr, barangay: "", city: "", province: "" };
+}
+
 /* ---------- Form dialog ---------- */
 interface FormDialogProps {
   open: boolean;
@@ -354,7 +376,10 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
   const [lastName, setLastName]     = useState("");
   const [area, setArea]             = useState("");
   const [phone, setPhone]           = useState("");
-  const [address, setAddress]       = useState("");
+  const [province, setProvince]     = useState("");
+  const [city, setCity]             = useState("");
+  const [barangay, setBarangay]     = useState("");
+  const [street, setStreet]         = useState("");
   const [mothersName, setMothersName] = useState("");
   const [fathersName, setFathersName] = useState("");
   const [placeOfBirth, setPlaceOfBirth] = useState("");
@@ -373,7 +398,11 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
       setMiddleName(collector?.middle_name ?? (parts.length > 2 ? parts.slice(1, -1).join(" ") : ""));
       setArea(collector?.area ?? "");
       setPhone(collector?.phone?.replace(/^\+?63/, "").replace(/^0/, "") ?? "");
-      setAddress(collector?.address ?? "");
+      const parsed = parseAddress(collector?.address ?? "");
+      setProvince(parsed.province);
+      setCity(parsed.city);
+      setBarangay(parsed.barangay);
+      setStreet(parsed.street);
       setMothersName(collector?.mothers_name ?? "");
       setFathersName(collector?.fathers_name ?? "");
       setPlaceOfBirth(collector?.place_of_birth ?? "");
@@ -390,6 +419,9 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
     if (!firstName.trim())     e.firstName    = "Given name is required.";
     if (!lastName.trim())      e.lastName     = "Surname is required.";
     if (!area.trim())          e.area         = "Area / route is required.";
+    if (!province)             e.province     = "Province is required.";
+    if (!city)                 e.city         = "City / Municipality is required.";
+    if (!barangay.trim())      e.barangay     = "Barangay is required.";
     if (!phone.trim())         e.phone        = "Cellphone number is required.";
     else if (phone.replace(/\D/g, "").length !== 10) e.phone = "Enter 10 digits after +63.";
     if (!mothersName.trim())   e.mothersName  = "Mother's name is required.";
@@ -405,14 +437,15 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
     if (!validate() || !token) return;
     setSaving(true);
     try {
-      const localPhone = "0" + phone.replace(/\D/g, "");
+      const localPhone  = "0" + phone.replace(/\D/g, "");
+      const fullAddress = [street.trim(), barangay.trim(), city, province].filter(Boolean).join(", ");
       const body = {
         first_name:      firstName.trim(),
         middle_name:     middleName.trim() || null,
         last_name:       lastName.trim(),
         area:            area.trim(),
         phone:           localPhone,
-        address:         address.trim() || null,
+        address:         fullAddress,
         mothers_name:    mothersName.trim(),
         fathers_name:    fathersName.trim(),
         place_of_birth:  placeOfBirth.trim(),
@@ -505,12 +538,54 @@ function CollectorFormDialog({ open, onOpenChange, token, collector, onSaved }: 
               placeholder="collector@email.com" disabled={saving} className={errors.email ? "border-destructive" : ""} />
           </FF>
 
-          <FF label="Address (optional)" full>
-            <Textarea value={address}
-              onChange={(e) => setAddress(e.target.value.toUpperCase())}
-              placeholder="HOUSE / UNIT NO., BARANGAY, CITY, PROVINCE"
-              rows={2} disabled={saving}
-              className="uppercase" />
+          <FF label="Province" error={errors.province}>
+            <SearchableCombobox
+              options={PH_PROVINCES.map((p) => ({ value: p, label: p }))}
+              value={province}
+              onChange={(v) => { setProvince(v); setCity(""); setBarangay(""); clrErr("province"); }}
+              placeholder="Search province…"
+              error={!!errors.province}
+              disabled={saving}
+            />
+          </FF>
+
+          <FF label="City / Municipality" error={errors.city}>
+            <SearchableCombobox
+              options={(PH_CITIES[province] ?? []).map((c) => ({ value: c, label: c }))}
+              value={city}
+              onChange={(v) => { setCity(v); setBarangay(""); clrErr("city"); }}
+              placeholder={province ? "Search city…" : "Select province first"}
+              error={!!errors.city}
+              disabled={saving || !province}
+            />
+          </FF>
+
+          <FF label="Barangay" error={errors.barangay} full>
+            {getBarangays(province, city).length > 0 ? (
+              <SearchableCombobox
+                options={getBarangays(province, city).map((b) => ({ value: b, label: b }))}
+                value={barangay}
+                onChange={(v) => { setBarangay(v); clrErr("barangay"); }}
+                placeholder={city ? "Search barangay…" : "Select city first"}
+                error={!!errors.barangay}
+                disabled={saving || !city}
+              />
+            ) : (
+              <Input
+                value={barangay}
+                onChange={(e) => { setBarangay(e.target.value.toUpperCase()); clrErr("barangay"); }}
+                placeholder={city ? "Type barangay name" : "Select city first"}
+                disabled={saving || !city}
+                className={`uppercase ${errors.barangay ? "border-destructive" : ""}`}
+              />
+            )}
+          </FF>
+
+          <FF label="Street (optional)" full>
+            <Input value={street}
+              onChange={(e) => setStreet(e.target.value.toUpperCase())}
+              placeholder="HOUSE NO. / STREET NAME"
+              disabled={saving} className="uppercase" />
           </FF>
 
           <FF label="Mother's full name" error={errors.mothersName}>

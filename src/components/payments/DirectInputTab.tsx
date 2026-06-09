@@ -63,10 +63,8 @@ export function DirectInputTab() {
       const active = loanData.filter((l) => l.status !== "paid");
       setLoans(active);
       setHistory(payData.slice(0, 20));
-      if (active.length > 0) {
-        setSelectedLoanId(active[0].id);
-        setAmount(active[0].daily_payment);
-      }
+      setSelectedLoanId(null);
+      setAmount(0);
     } catch {
       toast.error("Failed to load payment data.");
     } finally {

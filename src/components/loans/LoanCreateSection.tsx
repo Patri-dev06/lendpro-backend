@@ -77,7 +77,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
 
   const [loanType, setLoanType] = useState<LoanType>("new-loan");
   const [clientId, setClientId] = useState<number | null>(null);
-  const [principal, setPrincipal] = useState(10000);
+  const [principal, setPrincipal] = useState(0);
   const [interest, setInterest]   = useState(0);
   const [sc, setSc]               = useState(0);
   const [termDays, setTermDays]   = useState<number>(60);
@@ -213,15 +213,12 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
       setCreatedLoanNumber(loan.number);
       onLoanCreated(loan);
       // Reset form — restore setting-based defaults, clear all fields
-      const resetPrincipal = 10000;
-      const resetSc        = Math.round(resetPrincipal * defaultScRate / 100);
-      const resetTerm      = termDays;
-      const resetInterest  = calcInterest(resetPrincipal, resetTerm);
-      setPrincipal(resetPrincipal);
-      setInterest(resetInterest);
-      setSc(resetSc);
-      setTermDays(resetTerm);
-      recalcDailyRaw(resetPrincipal, resetInterest, resetSc, resetTerm);
+      setPrincipal(0);
+      setInterest(0);
+      setSc(0);
+      setTermDays(60);
+      setDaily(0);
+      recalcDailyRaw(0, 0, 0, 60);
       setHolidayCount(0);
       setRemarks(""); setErrors({});
       setDate(new Date().toISOString().slice(0, 10));

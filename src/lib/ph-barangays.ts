@@ -4,10 +4,11 @@ export const PH_BARANGAYS: Record<string, string[]> = {
 
   // ── AGUSAN DEL NORTE ──────────────────────────────────────────────────────
   "Agusan del Norte|Buenavista": [
-    "Agay","Anade","Anislagan","Antao","Basilisa","Camagong","Cubi-cubi","Culit",
-    "Jaguimitan","Kinabjangan","La Paz","Magsaysay","Mahaba","New Magallanes",
-    "Noche Buena","Poblacion","San Agustin","San Isidro","San Jose","San Roque",
-    "Santo Niño","Tagbongabong","Tinaytayan",
+    "Abilan","Agong-ong","Alubijid","Guinabsan","Lower Olave","Macalang",
+    "Malapong","Malpoc","Manapa","Matabao","Poblacion 1","Poblacion 2",
+    "Poblacion 3","Poblacion 4","Poblacion 5","Poblacion 6","Poblacion 7",
+    "Poblacion 8","Poblacion 9","Poblacion 10","Rizal","Sacol","Sangay",
+    "Simbalan","Talo-ao",
   ],
   "Agusan del Norte|Butuan City": [
     "Ambago","Amparo","Ampayon","Anticala","Antongalon","Aupagan","Baan KM 3",
