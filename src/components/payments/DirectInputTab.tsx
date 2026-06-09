@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { Field } from "@/components/shared/Field";
 import { BalanceCard } from "@/components/payments/BalanceCard";
 import { EditPaymentDialog, type PaymentToEdit } from "@/components/payments/EditPaymentDialog";
@@ -120,16 +120,16 @@ export function DirectInputTab() {
           <h3 className="font-display text-base font-semibold">Payment details</h3>
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Client">
-              <Select value={String(selectedLoanId ?? "")} onValueChange={(v) => handleLoanChange(Number(v))}>
-                <SelectTrigger><SelectValue placeholder="Select client…" /></SelectTrigger>
-                <SelectContent>
-                  {loans.map((l) => (
-                    <SelectItem key={l.id} value={String(l.id)}>
-                      {l.client.name} — {l.client.store_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                options={loans.map((l) => ({
+                  value: String(l.id),
+                  label: l.client.name,
+                  sub: l.client.store_name,
+                }))}
+                value={String(selectedLoanId ?? "")}
+                onChange={(v) => handleLoanChange(Number(v))}
+                placeholder="Search by client name or store…"
+              />
             </Field>
 
             <Field label="Loan number">
