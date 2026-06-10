@@ -20,6 +20,7 @@ export interface PaymentToEdit {
   new_balance: number;
   remarks: string | null;
   client: { name: string };
+  loan: { release_date: string } | null;
 }
 
 interface Props {
@@ -46,6 +47,9 @@ export function EditPaymentDialog({ payment, onClose, onSaved }: Props) {
   const previewNewBalance = payment
     ? Math.max(0, payment.previous_balance - amount)
     : 0;
+
+  const beforeRelease =
+    !!payment?.loan?.release_date && !!date && date < payment.loan.release_date;
 
   async function handleSave() {
     if (!payment || !token || amount <= 0) return;
@@ -105,7 +109,13 @@ export function EditPaymentDialog({ payment, onClose, onSaved }: Props) {
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+                className={beforeRelease ? "border-destructive ring-destructive" : ""}
               />
+              {beforeRelease && (
+                <p className="text-xs text-destructive">
+                  Date cannot be before the loan release date ({payment!.loan!.release_date}).
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -122,7 +132,7 @@ export function EditPaymentDialog({ payment, onClose, onSaved }: Props) {
               <Button variant="outline" onClick={handleClose} disabled={saving}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={saving || amount <= 0}>
+              <Button onClick={handleSave} disabled={saving || amount <= 0 || beforeRelease}>
                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save changes
               </Button>

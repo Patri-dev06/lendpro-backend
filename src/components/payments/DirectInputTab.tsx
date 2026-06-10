@@ -20,6 +20,7 @@ interface ApiLoan {
   number: string;
   daily_payment: number;
   current_balance: number;
+  release_date: string;
   status: string;
   client_id: number;
   client: { id: number; name: string; store_name: string };
@@ -33,6 +34,7 @@ interface ApiPayment {
   new_balance: number;
   remarks: string | null;
   client: { name: string };
+  loan: { release_date: string } | null;
 }
 
 export function DirectInputTab() {
@@ -52,6 +54,7 @@ export function DirectInputTab() {
 
   const selectedLoan = loans.find((l) => l.id === selectedLoanId);
   const newBalance   = calcNewBalance(selectedLoan?.current_balance ?? 0, amount);
+  const beforeRelease = !!selectedLoan && !!date && date < selectedLoan.release_date;
 
   const loadData = useCallback(async () => {
     if (!token) return;
@@ -148,7 +151,13 @@ export function DirectInputTab() {
             </Field>
 
             <Field label="Payment date">
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+                className={beforeRelease ? "border-destructive" : ""} />
+              {beforeRelease && (
+                <p className="text-xs text-destructive mt-1">
+                  Cannot record before release date ({selectedLoan!.release_date}).
+                </p>
+              )}
             </Field>
 
             <Field label="Remarks" full>
@@ -164,7 +173,7 @@ export function DirectInputTab() {
             <Button
               className="bg-primary text-primary-foreground hover:bg-primary-glow"
               onClick={handleSubmit}
-              disabled={saving || !selectedLoanId || amount <= 0}
+              disabled={saving || !selectedLoanId || amount <= 0 || beforeRelease}
             >
               {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Wallet className="mr-1.5 h-4 w-4" />}
               {saving ? "Recording…" : "Record payment"}
