@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Pencil, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,9 @@ import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { Field } from "@/components/shared/Field";
 import { BalanceCard } from "@/components/payments/BalanceCard";
 import { EditPaymentDialog, type PaymentToEdit } from "@/components/payments/EditPaymentDialog";
+import { Paginator } from "@/components/shared/Paginator";
+
+const PAGE_SIZE = 20;
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { hasPermission } from "@/lib/permissions";
@@ -51,6 +54,7 @@ export function DirectInputTab() {
   const [remarks, setRemarks] = useState("");
   const [saving, setSaving]   = useState(false);
   const [editTarget, setEditTarget] = useState<PaymentToEdit | null>(null);
+  const [page, setPage]       = useState(1);
 
   const selectedLoan = loans.find((l) => l.id === selectedLoanId);
   const newBalance   = calcNewBalance(selectedLoan?.current_balance ?? 0, amount);
@@ -65,7 +69,7 @@ export function DirectInputTab() {
       ]);
       const active = loanData.filter((l) => l.status !== "paid");
       setLoans(active);
-      setHistory(payData.slice(0, 20));
+      setHistory(payData);
       setSelectedLoanId(null);
       setAmount(0);
     } catch {
@@ -76,6 +80,12 @@ export function DirectInputTab() {
   }, [token]);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { setPage(1); }, [history]);
+
+  const pagedHistory = useMemo(
+    () => history.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [history, page],
+  );
 
   function handleLoanChange(id: number) {
     setSelectedLoanId(id);
@@ -192,7 +202,7 @@ export function DirectInputTab() {
       <div className="rounded-2xl border bg-card shadow-sm">
         <div className="border-b px-5 py-4">
           <h3 className="font-display text-base font-semibold">Recent payment history</h3>
-          <p className="text-xs text-muted-foreground">Last 20 payments across all clients</p>
+          <p className="text-xs text-muted-foreground">{history.length} payments across all clients</p>
         </div>
         <div className="overflow-x-auto">
           <Table className="min-w-150">
@@ -211,7 +221,7 @@ export function DirectInputTab() {
               {history.length === 0 ? (
                 <tr><td colSpan={canEdit ? 7 : 6} className="py-10 text-center text-sm text-muted-foreground">No payments recorded yet.</td></tr>
               ) : (<>
-                {history.map((p) => (
+                {pagedHistory.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell>{formatDate(p.payment_date)}</TableCell>
                   <TableCell className="font-medium">{p.client.name}</TableCell>
@@ -243,6 +253,7 @@ export function DirectInputTab() {
             </TableBody>
           </Table>
         </div>
+        <Paginator page={page} pageSize={PAGE_SIZE} total={history.length} onPageChange={setPage} />
       </div>
 
       <EditPaymentDialog

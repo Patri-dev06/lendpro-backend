@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { Download, FileSpreadsheet, FileText, Loader2, Printer, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,10 @@ import { useRole } from "@/lib/role-context";
 import { formatPHP, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { Paginator } from "@/components/shared/Paginator";
 import { PermissionGuard } from "@/components/shared/AccessRestricted";
+
+const PAGE_SIZE = 25;
 
 export const Route = createFileRoute("/_app/reports")({
   head: () => ({ meta: [{ title: "Reports — BuenaMano" }] }),
@@ -59,6 +62,7 @@ function ReportsPage() {
   const [summary, setSummary] = useState({ expected: 0, collected: 0, balance: 0, count: 0 });
   const [loading, setLoading] = useState(false);
   const fetchSeq = useRef(0);
+  const [page, setPage]       = useState(1);
 
   const fetchCollectors = useCallback(async () => {
     if (!token) return;
@@ -140,6 +144,14 @@ function ReportsPage() {
 
   // Auto-fetch on category change
   useEffect(() => { fetchReport(); }, [fetchReport]);
+
+  // Reset page when data or category changes
+  useEffect(() => { setPage(1); }, [rows, active]);
+
+  const pagedRows = useMemo(
+    () => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [rows, page],
+  );
 
   function exportCsv() {
     if (rows.length === 0) return;
@@ -257,9 +269,11 @@ function ReportsPage() {
               No data found for the selected filters.
             </div>
           ) : (
-            <ReportTable category={active} rows={rows} />
+            <ReportTable category={active} rows={pagedRows} />
           )}
         </div>
+
+        <Paginator page={page} pageSize={PAGE_SIZE} total={rows.length} onPageChange={setPage} />
 
         {/* Footer actions */}
         <div className="flex flex-wrap items-center justify-end gap-2 border-t px-5 py-4">

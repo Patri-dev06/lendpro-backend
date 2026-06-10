@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Paginator } from "@/components/shared/Paginator";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { PermissionGuard } from "@/components/shared/AccessRestricted";
 import { toast } from "sonner";
+
+const PAGE_SIZE = 25;
 
 interface AuditLog {
   id: number;
@@ -63,6 +66,7 @@ function AuditPage() {
   const [q, setQ]             = useState("");
   const [action, setAction]   = useState("all");
   const [date, setDate]       = useState("");
+  const [page, setPage]       = useState(1);
 
   const fetchLogs = useCallback(async () => {
     if (!token) return;
@@ -95,6 +99,14 @@ function AuditPage() {
       return matchDate && matchText;
     });
   }, [logs, q, date]);
+
+  const paged = useMemo(
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page],
+  );
+
+  /* Reset to page 1 when filters change */
+  useEffect(() => { setPage(1); }, [q, date, action]);
 
   return (
     <PermissionGuard permission="audit:read">
@@ -169,7 +181,7 @@ function AuditPage() {
                 <tr><td colSpan={7} className="py-12 text-center text-sm text-muted-foreground">
                   {logs.length === 0 ? "No audit log entries yet." : "No entries match your filters."}
                 </td></tr>
-              ) : filtered.map((l) => (
+              ) : paged.map((l) => (
                 <TableRow key={l.id}>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                     {formatTs(l.performed_at)}
@@ -199,6 +211,7 @@ function AuditPage() {
             </TableBody>
           </Table>
         </div>
+        <Paginator page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} />
       </div>
     </div>
     </PermissionGuard>
