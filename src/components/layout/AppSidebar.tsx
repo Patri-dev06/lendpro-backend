@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, Users, Banknote, CalendarCheck, Wallet, FileBarChart,
+  LayoutDashboard, Users, Banknote, Wallet, FileBarChart,
   UserCheck, ShieldCheck, ScrollText, Settings,
 } from "lucide-react";
 import {
@@ -12,12 +12,11 @@ import { useRole } from "@/lib/role-context";
 import { hasPermission, type Permission } from "@/lib/permissions";
 
 const MAIN_NAV: { title: string; url: string; icon: React.ElementType; permission: Permission | null }[] = [
-  { title: "Dashboard",           url: "/",          icon: LayoutDashboard, permission: null },
-  { title: "Clients",             url: "/clients",   icon: Users,           permission: "clients:read" },
-  { title: "Loans",               url: "/loans",     icon: Banknote,        permission: "loans:read" },
-  { title: "Collection Schedule", url: "/schedule",  icon: CalendarCheck,   permission: "schedule:read" },
-  { title: "Payments",            url: "/payments",  icon: Wallet,          permission: "payments:read" },
-  { title: "Reports",             url: "/reports",   icon: FileBarChart,    permission: "reports:read" },
+  { title: "Dashboard",  url: "/",         icon: LayoutDashboard, permission: null },
+  { title: "Clients",    url: "/clients",  icon: Users,           permission: "clients:read" },
+  { title: "Loans",      url: "/loans",    icon: Banknote,        permission: "loans:read" },
+  { title: "Payments",   url: "/payments", icon: Wallet,          permission: "payments:read" },
+  { title: "Reports",    url: "/reports",  icon: FileBarChart,    permission: "reports:read" },
 ];
 
 const ADMIN_NAV: { title: string; url: string; icon: React.ElementType; permission: Permission }[] = [

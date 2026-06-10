@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { useRole } from "@/lib/role-context";
 import { apiRequest } from "@/lib/api";
 import { toast } from "sonner";
@@ -203,34 +203,32 @@ export function UploadExcelTab() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Collector</Label>
-              <Select value={selectedId} onValueChange={handleCollectorChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select collector…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Collectors</SelectItem>
-                  {collectors.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name}{c.area ? ` — ${c.area}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                options={[
+                  { value: "all", label: "All Collectors" },
+                  ...collectors.map((c) => ({
+                    value: String(c.id),
+                    label: c.name,
+                    sub: c.area || undefined,
+                  })),
+                ]}
+                value={selectedId}
+                onChange={handleCollectorChange}
+                placeholder="Search collector…"
+              />
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs">Area</Label>
-              <Select value={selectedArea} onValueChange={handleAreaChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select area…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Areas</SelectItem>
-                  {areas.map((area) => (
-                    <SelectItem key={area} value={area}>{area}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                options={[
+                  { value: "all", label: "All Areas" },
+                  ...areas.map((area) => ({ value: area, label: area })),
+                ]}
+                value={selectedArea}
+                onChange={handleAreaChange}
+                placeholder="Search area…"
+              />
             </div>
 
             <div className="space-y-1.5">

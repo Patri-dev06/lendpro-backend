@@ -59,6 +59,11 @@ export function SearchableCombobox({
     setOpen(true);
   }
 
+  function handleClick() {
+    setQuery("");
+    setOpen(true);
+  }
+
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setQuery(e.target.value);
     setOpen(true);
@@ -80,6 +85,7 @@ export function SearchableCombobox({
           value={displayValue}
           onChange={handleChange}
           onFocus={handleFocus}
+          onClick={handleClick}
           placeholder={placeholder}
           disabled={disabled}
           className={cn(

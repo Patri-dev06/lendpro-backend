@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
-import { Download, FileSpreadsheet, FileText, Loader2, Printer, RefreshCw } from "lucide-react";
+import { CalendarCheck, Download, FileSpreadsheet, FileText, Loader2, Printer, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
+import { CollectionScheduleSection } from "@/components/reports/CollectionScheduleSection";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { formatPHP, formatDate } from "@/lib/format";
@@ -29,9 +30,10 @@ type Category =
   | "past-due"
   | "collector-performance"
   | "monthly-collection"
-  | "monthly-releases";
+  | "monthly-releases"
+  | "collection-schedule";
 
-const CATEGORIES: { id: Category; label: string }[] = [
+const CATEGORIES: { id: Category; label: string; icon?: React.ElementType }[] = [
   { id: "daily-collection",       label: "Daily Collection Report" },
   { id: "active-loans",           label: "Active Loans Report" },
   { id: "paid-loans",             label: "Fully Paid Loans" },
@@ -40,6 +42,7 @@ const CATEGORIES: { id: Category; label: string }[] = [
   { id: "collector-performance",  label: "Collector Performance" },
   { id: "monthly-collection",     label: "Monthly Collection" },
   { id: "monthly-releases",       label: "Monthly Releases" },
+  { id: "collection-schedule",    label: "Collection Schedule", icon: CalendarCheck },
 ];
 
 interface ApiCollector { id: number; name: string; }
@@ -75,7 +78,7 @@ function ReportsPage() {
   useEffect(() => { fetchCollectors(); }, [fetchCollectors]);
 
   const fetchReport = useCallback(async () => {
-    if (!token) return;
+    if (!token || active === "collection-schedule") return;
     const seq = ++fetchSeq.current;
     setLoading(true);
     setRows([]);
@@ -176,6 +179,7 @@ function ReportsPage() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {CATEGORIES.map((c) => {
           const isActive = active === c.id;
+          const Icon = c.icon ?? FileText;
           return (
             <button key={c.id} onClick={() => { setRows([]); setSummary({ expected: 0, collected: 0, balance: 0, count: 0 }); setLoading(true); setActive(c.id); }}
               className={cn(
@@ -184,7 +188,7 @@ function ReportsPage() {
                   ? "bg-primary border-primary text-primary-foreground shadow-md"
                   : "bg-card hover:bg-muted/60 hover:-translate-y-px hover:shadow-md"
               )}>
-              <FileText className={cn("h-5 w-5", isActive ? "text-primary-foreground/80" : "text-primary")} />
+              <Icon className={cn("h-5 w-5", isActive ? "text-primary-foreground/80" : "text-primary")} />
               <p className="mt-2 font-medium leading-tight">{c.label}</p>
               <p className={cn("mt-1 text-xs", isActive ? "text-primary-foreground/70" : "text-muted-foreground")}>
                 Tap to preview
@@ -194,6 +198,9 @@ function ReportsPage() {
         })}
       </div>
 
+      {active === "collection-schedule" ? (
+        <CollectionScheduleSection />
+      ) : (
       <div className="rounded-2xl border bg-card shadow-sm">
         {/* Filters */}
         <div className="flex flex-wrap items-end justify-between gap-3 border-b p-5">
@@ -219,13 +226,16 @@ function ReportsPage() {
             )}
             {/* Collector filter */}
             {(active === "daily-collection" || active === "active-loans" || active === "overdue" || active === "past-due") && (
-              <Select value={collectorId} onValueChange={setCollectorId}>
-                <SelectTrigger className="h-9 w-44"><SelectValue placeholder="Collector" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All collectors</SelectItem>
-                  {collectors.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                className="h-9 w-44"
+                options={[
+                  { value: "all", label: "All collectors" },
+                  ...collectors.map((c) => ({ value: String(c.id), label: c.name })),
+                ]}
+                value={collectorId}
+                onChange={setCollectorId}
+                placeholder="Collector…"
+              />
             )}
             <Button onClick={fetchReport} disabled={loading} className="h-9 bg-primary text-primary-foreground hover:bg-primary-glow">
               {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}
@@ -288,6 +298,7 @@ function ReportsPage() {
           </Button>
         </div>
       </div>
+      )}
     </div>
     </PermissionGuard>
   );

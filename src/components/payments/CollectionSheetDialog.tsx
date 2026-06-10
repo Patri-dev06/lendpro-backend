@@ -3,7 +3,7 @@ import { Printer, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { printCollectionSheet, type CollectionLoan } from "@/lib/loan-prints";
@@ -101,19 +101,19 @@ export function CollectionSheetDialog() {
           <div className="space-y-4 py-1">
             <div className="space-y-1.5">
               <Label>Collector</Label>
-              <Select value={selectedId} onValueChange={setSelectedId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select collector…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Collectors</SelectItem>
-                  {collectors.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name}{c.area ? ` — ${c.area}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                options={[
+                  { value: "all", label: "All Collectors" },
+                  ...collectors.map((c) => ({
+                    value: String(c.id),
+                    label: c.name,
+                    sub: c.area || undefined,
+                  })),
+                ]}
+                value={selectedId}
+                onChange={setSelectedId}
+                placeholder="Search collector…"
+              />
             </div>
 
             <div className="rounded-md border bg-muted/40 px-4 py-3 text-sm space-y-1.5">

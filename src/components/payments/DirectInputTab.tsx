@@ -3,7 +3,7 @@ import { CheckCircle2, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { EditPaymentDialog, type PaymentToEdit } from "@/components/payments/EditPaymentDialog";
 import { Paginator } from "@/components/shared/Paginator";
 import { apiRequest } from "@/lib/api";
@@ -181,18 +181,16 @@ export function DirectInputTab() {
         <div className="flex flex-wrap items-end gap-3 px-5 py-4 border-b">
           <div className="space-y-1.5 min-w-48 flex-1">
             <p className="text-xs font-medium">Collector</p>
-            <Select value={collectorId} onValueChange={setCollectorId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select collector…" />
-              </SelectTrigger>
-              <SelectContent>
-                {collectors.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name}{c.area ? ` — ${c.area}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableCombobox
+              options={collectors.map((c) => ({
+                value: String(c.id),
+                label: c.name,
+                sub: c.area || undefined,
+              }))}
+              value={collectorId}
+              onChange={setCollectorId}
+              placeholder="Search collector…"
+            />
           </div>
 
           <div className="space-y-1.5">
