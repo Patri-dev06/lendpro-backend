@@ -16,7 +16,7 @@ class PaymentController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $payments = Payment::with(['client', 'collector', 'recordedBy'])
+        $payments = Payment::with(['client', 'collector', 'recordedBy', 'loan:id,release_date'])
             ->when($request->loan_id, fn ($q, $id) => $q->where('loan_id', $id))
             ->when($request->client_id, fn ($q, $id) => $q->where('client_id', $id))
             ->when($request->collector_id, fn ($q, $id) => $q->where('collector_id', $id))
@@ -37,6 +37,12 @@ class PaymentController extends Controller
         ]);
 
         $loan = Loan::findOrFail($data['loan_id']);
+
+        if ($data['payment_date'] < $loan->release_date) {
+            return response()->json([
+                'message' => "Payment date cannot be before the loan's release date ({$loan->release_date}).",
+            ], 422);
+        }
 
         $payment = DB::transaction(function () use ($data, $loan) {
             $prev = $loan->current_balance;
@@ -154,6 +160,15 @@ class PaymentController extends Controller
             'remarks'      => 'nullable|string',
         ]);
 
+        if (isset($data['payment_date'])) {
+            $loan = Loan::findOrFail($payment->loan_id);
+            if ($data['payment_date'] < $loan->release_date) {
+                return response()->json([
+                    'message' => "Payment date cannot be before the loan's release date ({$loan->release_date}).",
+                ], 422);
+            }
+        }
+
         DB::transaction(function () use ($data, $payment) {
             if (isset($data['amount']) && (float) $data['amount'] !== (float) $payment->amount) {
                 $loan    = Loan::findOrFail($payment->loan_id);
@@ -239,6 +254,11 @@ class PaymentController extends Controller
             $loan = Loan::where('number', $loanNumber)->first();
             if (! $loan) {
                 $errors[] = "Row {$rowNum}: loan '{$loanNumber}' not found.";
+                continue;
+            }
+
+            if ($paymentDate < $loan->release_date) {
+                $errors[] = "Row {$rowNum}: payment date cannot be before the loan's release date ({$loan->release_date}).";
                 continue;
             }
 
