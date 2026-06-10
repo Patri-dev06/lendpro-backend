@@ -66,6 +66,10 @@ function LoansPage() {
     });
   }
 
+  function handleLoanUpdated(updated: ApiLoan) {
+    setLoans((prev) => prev.map((l) => l.id === updated.id ? updated : l));
+  }
+
   const pendingLoans = loans.filter((l) => l.status === "pending");
   const activeLoans  = loans.filter((l) => l.status !== "pending");
 
@@ -75,7 +79,7 @@ function LoansPage() {
       <PageHeader title="Loan management" subtitle="Encode new loans and review the active loan ledger." />
       <LoanCreateSection token={token} onLoanCreated={handleLoanCreated} initialClientId={initialClientId} />
       <PendingLoansSection token={token} loans={pendingLoans} onLoansChanged={handlePendingChanged} />
-      <ActiveLoanTable loans={activeLoans} loading={loading} onReconstructed={handleReconstructed} />
+      <ActiveLoanTable loans={activeLoans} loading={loading} onReconstructed={handleReconstructed} onLoanUpdated={handleLoanUpdated} />
     </div>
     </PermissionGuard>
   );

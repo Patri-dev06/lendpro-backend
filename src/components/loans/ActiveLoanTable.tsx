@@ -1,16 +1,22 @@
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Printer, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Pencil, Printer, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/finance/StatusBadge";
-import { formatPHP, formatDate } from "@/lib/format";
-import { LOAN_TYPE_LABELS } from "@/lib/loan-constants";
+import { DateInput } from "@/components/shared/DateInput";
+import { formatPHP, formatDate, addDays } from "@/lib/format";
+import { LOAN_TYPE_LABELS, TERM_OPTIONS } from "@/lib/loan-constants";
+import { calcInterest, calcDailyPayment } from "@/lib/loan-calc";
 import { printLedger, type PrintScheduleRow } from "@/lib/loan-prints";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import type { ApiLoan } from "@/components/loans/LoanCreateSection";
 import { LoanDetailSheet } from "@/components/loans/LoanDetailSheet";
 
@@ -18,10 +24,13 @@ interface Props {
   loans: ApiLoan[];
   loading: boolean;
   onReconstructed?: (oldLoanId: number, newLoan: ApiLoan) => void;
+  onLoanUpdated?: (loan: ApiLoan) => void;
 }
 
-export function ActiveLoanTable({ loans, loading, onReconstructed }: Props) {
-  const { token } = useRole();
+export function ActiveLoanTable({ loans, loading, onReconstructed, onLoanUpdated }: Props) {
+  const { token, role } = useRole();
+  const canEdit = role === "admin" || role === "manager";
+
   const [q, setQ]               = useState("");
   const [status, setStatus]     = useState("all");
   const [type, setType]         = useState("all");
@@ -30,6 +39,82 @@ export function ActiveLoanTable({ loans, loading, onReconstructed }: Props) {
   const [sortDir, setSortDir]   = useState<"asc" | "desc">("desc");
   const [selectedLoan, setSelectedLoan] = useState<ApiLoan | null>(null);
   const [printingId, setPrintingId] = useState<number | null>(null);
+
+  // Edit active loan state
+  const [editTarget, setEditTarget]             = useState<ApiLoan | null>(null);
+  const [editPrincipal, setEditPrincipal]       = useState(0);
+  const [editInterest, setEditInterest]         = useState(0);
+  const [editSc, setEditSc]                     = useState(0);
+  const [editTermDays, setEditTermDays]         = useState(60);
+  const [editHolidayCount, setEditHolidayCount] = useState(0);
+  const [editDaily, setEditDaily]               = useState(0);
+  const [editDate, setEditDate]                 = useState("");
+  const [editRemarks, setEditRemarks]           = useState("");
+  const [editErrors, setEditErrors]             = useState<Record<string, string>>({});
+  const [editing, setEditing]                   = useState(false);
+
+  function openEdit(loan: ApiLoan) {
+    setEditTarget(loan);
+    setEditPrincipal(loan.principal);
+    setEditInterest(loan.interest);
+    setEditSc(loan.service_charge);
+    setEditTermDays(loan.term_days);
+    setEditHolidayCount(loan.holiday_count);
+    setEditDaily(loan.daily_payment);
+    setEditDate(loan.release_date.slice(0, 10));
+    setEditRemarks(loan.remarks ?? "");
+    setEditErrors({});
+  }
+
+  function handleEditPrincipalChange(p: number) {
+    setEditPrincipal(p);
+    const auto = calcInterest(p, editTermDays);
+    setEditInterest(auto);
+    setEditDaily(calcDailyPayment(p + auto, editTermDays));
+    setEditErrors((e) => ({ ...e, principal: "" }));
+  }
+
+  function handleEditTermChange(t: number) {
+    setEditTermDays(t);
+    const auto = calcInterest(editPrincipal, t);
+    setEditInterest(auto);
+    setEditDaily(calcDailyPayment(editPrincipal + auto, t));
+  }
+
+  async function handleEdit() {
+    const errs: Record<string, string> = {};
+    if (editPrincipal <= 0) errs.principal = "Principal must be greater than 0.";
+    if (editSc < 0)         errs.sc        = "Processing fee cannot be negative.";
+    if (editDaily <= 0)     errs.daily     = "Daily payment must be greater than 0.";
+    if (!editDate)          errs.date      = "Release date is required.";
+    if (Object.keys(errs).length > 0) { setEditErrors(errs); return; }
+    if (!editTarget || !token) return;
+    setEditing(true);
+    try {
+      const updated = await apiRequest<ApiLoan>("PATCH", `loans/${editTarget.id}/edit-active`, {
+        token,
+        body: {
+          principal:      editPrincipal,
+          interest:       editInterest,
+          service_charge: editSc,
+          daily_payment:  editDaily,
+          term_days:      editTermDays,
+          holiday_count:  editHolidayCount,
+          release_date:   editDate,
+          remarks:        editRemarks || null,
+        },
+      });
+      onLoanUpdated?.(updated);
+      toast.success(`Loan ${updated.number} updated.`);
+      setEditTarget(null);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update loan.");
+    } finally {
+      setEditing(false);
+    }
+  }
+
+  const editDueDate = editDate ? addDays(editDate + "T00:00:00", editTermDays + editHolidayCount) : null;
 
   async function handlePrint(loan: ApiLoan) {
     setPrintingId(loan.id);
@@ -161,7 +246,7 @@ export function ActiveLoanTable({ loans, loading, onReconstructed }: Props) {
               <TableHead>Status</TableHead>
               <SortHead col="due_date"           label="Due Date" sortCol={sortCol} sortDir={sortDir} onSort={toggleSort} />
               <TableHead>Collector</TableHead>
-              <TableHead className="w-9" />
+              <TableHead className="w-16" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -207,18 +292,30 @@ export function ActiveLoanTable({ loans, loading, onReconstructed }: Props) {
                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{l.collector.name}</TableCell>
 
                 <TableCell onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    size="sm" variant="ghost"
-                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                    onClick={() => handlePrint(l)}
-                    disabled={printingId === l.id}
-                    title="Print ledger"
-                  >
-                    {printingId === l.id
-                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      : <Printer className="h-3.5 w-3.5" />
-                    }
-                  </Button>
+                  <div className="flex items-center gap-0.5">
+                    {canEdit && (
+                      <Button
+                        size="sm" variant="ghost"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => openEdit(l)}
+                        title="Edit loan"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    <Button
+                      size="sm" variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                      onClick={() => handlePrint(l)}
+                      disabled={printingId === l.id}
+                      title="Print ledger"
+                    >
+                      {printingId === l.id
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Printer className="h-3.5 w-3.5" />
+                      }
+                    </Button>
+                  </div>
                 </TableCell>
 
               </TableRow>
@@ -246,6 +343,124 @@ export function ActiveLoanTable({ loans, loading, onReconstructed }: Props) {
           onReconstructed?.(oldId, newLoan);
         }}
       />
+
+      {/* Edit active loan dialog */}
+      <Dialog open={!!editTarget} onOpenChange={(o) => !o && setEditTarget(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Loan — {editTarget?.number} ({editTarget?.client.name})</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground -mt-2 mb-1">
+            Corrects loan details and regenerates the collection schedule.
+            Current balance is preserved.
+          </p>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Principal loan (₱)</Label>
+              {editErrors.principal && <p className="text-[11px] text-destructive">{editErrors.principal}</p>}
+              <Input
+                type="number" min={0}
+                value={editPrincipal || ""}
+                className={editErrors.principal ? "border-destructive" : ""}
+                onChange={(e) => handleEditPrincipalChange(Number(e.target.value) || 0)}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Interest (₱) — auto-computed</Label>
+              <Input value={formatPHP(editInterest)} readOnly className="bg-muted/40 text-muted-foreground" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Term of loan</Label>
+              <Select value={String(editTermDays)} onValueChange={(v) => handleEditTermChange(Number(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TERM_OPTIONS.map((t) => (
+                    <SelectItem key={t} value={String(t)}>
+                      {{ 30: "1 Month", 45: "1.5 Months", 60: "2 Months" }[t] ?? `${t} days`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Holidays within term</Label>
+              <Select value={String(editHolidayCount)} onValueChange={(v) => setEditHolidayCount(Number(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[0, 1, 2, 3, 4, 5].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n === 0 ? "None" : `${n} holiday${n > 1 ? "s" : ""} (+${n} day${n > 1 ? "s" : ""})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Processing fee (₱)</Label>
+              {editErrors.sc && <p className="text-[11px] text-destructive">{editErrors.sc}</p>}
+              <Input
+                type="number" min={0}
+                value={editSc}
+                className={editErrors.sc ? "border-destructive" : ""}
+                onChange={(e) => { setEditSc(Number(e.target.value) || 0); setEditErrors((e2) => ({ ...e2, sc: "" })); }}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Daily payment (₱)</Label>
+              {editErrors.daily && <p className="text-[11px] text-destructive">{editErrors.daily}</p>}
+              <Input
+                type="number" min={0}
+                value={editDaily || ""}
+                className={editErrors.daily ? "border-destructive" : ""}
+                onChange={(e) => { setEditDaily(Number(e.target.value) || 0); setEditErrors((e2) => ({ ...e2, daily: "" })); }}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Loan release date</Label>
+              {editErrors.date && <p className="text-[11px] text-destructive">{editErrors.date}</p>}
+              <DateInput
+                value={editDate}
+                error={!!editErrors.date}
+                onChange={(e) => { setEditDate(e.target.value); setEditErrors((e2) => ({ ...e2, date: "" })); }}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Due date (computed)</Label>
+              <Input
+                value={editDueDate ? editDueDate.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" }) : "—"}
+                readOnly className="bg-muted/40 text-muted-foreground"
+              />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label className="text-xs">Remarks (optional)</Label>
+              <Textarea
+                rows={2}
+                value={editRemarks}
+                onChange={(e) => setEditRemarks(e.target.value)}
+                placeholder="Reason for correction…"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTarget(null)} disabled={editing}>
+              Cancel
+            </Button>
+            <Button onClick={handleEdit} disabled={editing}>
+              {editing ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Saving…</> : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
