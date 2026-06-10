@@ -129,9 +129,8 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
       recalcDailyRaw(10000, defaultInterest, defSc, defTerm);
 
       setClients(cls);
-      const preselect   = initialClientId ? cls.find((c) => c.id === initialClientId) : null;
-      const firstClient = preselect ?? (cls.length > 0 ? cls[0] : null);
-      if (firstClient) setClientId(firstClient.id);
+      const preselect = initialClientId ? cls.find((c) => c.id === initialClientId) : null;
+      if (preselect) setClientId(preselect.id);
     } catch {
       toast.error("Failed to load clients.");
     } finally {
