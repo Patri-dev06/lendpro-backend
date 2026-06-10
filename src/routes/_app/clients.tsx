@@ -331,7 +331,7 @@ function ClientsPage() {
                           <Pencil className="mr-1 h-3.5 w-3.5" />Edit
                         </Button>
                         <Button variant="ghost" size="sm" asChild>
-                          <Link to="/clients/$clientId" params={{ clientId: String(c.id) }}>
+                          <Link to="/payments" search={{ tab: "ledger" }}>
                             <Eye className="mr-1 h-3.5 w-3.5" />View
                           </Link>
                         </Button>

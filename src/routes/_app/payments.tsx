@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { BookOpen, Lock } from "lucide-react";
 import { useRole } from "@/lib/role-context";
 import { hasPermission } from "@/lib/permissions";
@@ -12,14 +13,22 @@ import { CollectorSummaryTab } from "@/components/payments/CollectorSummaryTab";
 import { ClientLedgerTab } from "@/components/payments/ClientLedgerTab";
 import { CollectionSheetDialog } from "@/components/payments/CollectionSheetDialog";
 
+const VALID_TABS = ["direct", "upload", "summary", "ledger"] as const;
+type TabValue = (typeof VALID_TABS)[number];
+
 export const Route = createFileRoute("/_app/payments")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: (VALID_TABS.includes(search.tab as TabValue) ? search.tab : "direct") as TabValue,
+  }),
   head: () => ({ meta: [{ title: "Payments — BuenaMano" }] }),
   component: PaymentsPage,
 });
 
 function PaymentsPage() {
   const { role } = useRole();
+  const { tab: initialTab } = Route.useSearch();
   const isClerk = hasPermission(role, "payments:write");
+  const [activeTab, setActiveTab] = useState<TabValue>(initialTab);
 
   return (
     <PermissionGuard permission="payments:read">
@@ -29,7 +38,7 @@ function PaymentsPage() {
         subtitle="Record daily collections, upload Excel files, and generate printable collector summary reports."
         actions={<CollectionSheetDialog />}
       />
-      <Tabs defaultValue="direct">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
         <TabsList>
           <TabsTrigger value="direct">Direct Input</TabsTrigger>
           <TabsTrigger value="upload" className="flex items-center gap-1.5">

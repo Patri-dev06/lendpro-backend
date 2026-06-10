@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { CalendarClock, Download, Loader2, Printer } from "lucide-react";
+import { printLedger, type PrintScheduleRow } from "@/lib/loan-prints";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { StatusBadge } from "@/components/finance/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,7 @@ function SchedulePage() {
   const [rows, setRows]             = useState<ScheduleRow[]>([]);
   const [loadingLoans, setLoadingLoans] = useState(true);
   const [loadingRows, setLoadingRows]   = useState(false);
+  const [printing, setPrinting]         = useState(false);
 
   // Filters
   const [fromDate, setFromDate] = useState("");
@@ -128,8 +130,29 @@ function SchedulePage() {
     return true;
   });
 
-  function handlePrint() {
-    window.print();
+  async function handlePrint() {
+    if (!loan || !token) return;
+    setPrinting(true);
+    try {
+      const data = await apiRequest<{
+        loan: { number: string; loan_type: string; principal: number; interest: number; service_charge: number;
+          total_receivable: number; daily_payment: number; term_days: number; current_balance: number;
+          release_date: string; due_date: string };
+        client: { name: string; store_name: string; address: string; phone: string };
+        schedule: PrintScheduleRow[];
+      }>("GET", `reports/client-ledger?loan_id=${loan.id}`, { token });
+      printLedger({ ...data.loan, client: data.client }, data.schedule);
+    } catch {
+      printLedger({
+        number: loan.number, loan_type: "", principal: 0, interest: 0, service_charge: 0,
+        total_receivable: loan.total_receivable, daily_payment: loan.daily_payment,
+        term_days: loan.term_days, current_balance: loan.current_balance,
+        release_date: loan.release_date, due_date: loan.due_date,
+        client: { name: loan.client.name, store_name: loan.client.store_name, address: "", phone: "" },
+      });
+    } finally {
+      setPrinting(false);
+    }
   }
 
   function handleExport() {
@@ -164,7 +187,10 @@ function SchedulePage() {
                 <CalendarClock className="mr-1.5 h-4 w-4" />Change Release Date
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={handlePrint}><Printer className="mr-1.5 h-4 w-4" />Print</Button>
+            <Button variant="outline" size="sm" onClick={handlePrint} disabled={printing || !loan}>
+              {printing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Printer className="mr-1.5 h-4 w-4" />}
+              {printing ? "Printing…" : "Print"}
+            </Button>
             <Button variant="outline" size="sm" onClick={handleExport}><Download className="mr-1.5 h-4 w-4" />Export</Button>
           </div>
         }
