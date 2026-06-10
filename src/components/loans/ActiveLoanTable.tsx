@@ -159,7 +159,8 @@ export function ActiveLoanTable({ loans, loading, onReconstructed }: Props) {
                   {loans.length === 0 ? "No loans yet. Create one above." : "No loans match your filters."}
                 </TableCell>
               </TableRow>
-            ) : sorted.map((l) => (
+            ) : (<>
+              {sorted.map((l) => (
               <TableRow
                 key={l.id}
                 className={cn(l.status === "paid" && "opacity-55", "cursor-pointer hover:bg-muted/40")}
@@ -199,7 +200,17 @@ export function ActiveLoanTable({ loans, loading, onReconstructed }: Props) {
                 </TableCell>
 
               </TableRow>
-            ))}
+              ))}
+              <TableRow className="border-t-2 bg-muted/40">
+                <TableCell colSpan={2} className="py-3 text-xs font-semibold text-muted-foreground">
+                  {sorted.length} loan{sorted.length !== 1 ? "s" : ""}
+                </TableCell>
+                <TableCell className="text-right num text-sm font-bold">{formatPHP(sorted.reduce((s, l) => s + l.total_receivable, 0))}</TableCell>
+                <TableCell className="text-right num text-sm font-semibold text-muted-foreground">{formatPHP(sorted.reduce((s, l) => s + l.daily_payment, 0))}</TableCell>
+                <TableCell className="text-right num text-sm font-bold">{formatPHP(sorted.reduce((s, l) => s + l.current_balance, 0))}</TableCell>
+                <TableCell colSpan={4} />
+              </TableRow>
+            </>)}
           </TableBody>
         </Table>
       </div>

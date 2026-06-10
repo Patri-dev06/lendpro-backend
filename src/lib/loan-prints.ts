@@ -62,9 +62,9 @@ export function printLedger(loan: PrintLoan) {
   <div class="info-row"><span class="info-lbl">Store / Business</span><span class="info-val">${client.store_name}</span></div>
   <div class="info-row"><span class="info-lbl">Loan Type</span><span class="info-val">${LOAN_TYPE_LABELS[loan.loan_type as keyof typeof LOAN_TYPE_LABELS] ?? loan.loan_type}</span></div>
   <div class="info-row"><span class="info-lbl">Address</span><span class="info-val">${client.address}</span></div>
-  <div class="info-row"><span class="info-lbl">Release Date</span><span class="info-val">${loan.release_date}</span></div>
+  <div class="info-row"><span class="info-lbl">Release Date</span><span class="info-val">${formatDate(loan.release_date)}</span></div>
   <div class="info-row"><span class="info-lbl">Phone</span><span class="info-val">${client.phone}</span></div>
-  <div class="info-row"><span class="info-lbl">Due Date</span><span class="info-val">${loan.due_date}</span></div>
+  <div class="info-row"><span class="info-lbl">Due Date</span><span class="info-val">${formatDate(loan.due_date)}</span></div>
   <div class="info-row"><span class="info-lbl">Principal</span><span class="info-val">${formatPHP(loan.principal)}</span></div>
   <div class="info-row"><span class="info-lbl">Processing Fee (−)</span><span class="info-val">${formatPHP(loan.service_charge)}</span></div>
   <div class="info-row"><span class="info-lbl">Net</span><span class="info-val">${formatPHP(loan.principal - loan.service_charge)}</span></div>
@@ -85,7 +85,7 @@ export function printLedger(loan: PrintLoan) {
         : 0;
       const isPaid    = i < paidDays;
       const bal       = Math.max(0, loan.total_receivable - (Math.min(i + 1, paidDays) * loan.daily_payment));
-      const rowDate   = new Date(loan.release_date + "T00:00:00");
+      const rowDate   = new Date(loan.release_date.slice(0, 10) + "T00:00:00");
       rowDate.setDate(rowDate.getDate() + i + 1);
       const dateStr   = rowDate.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
       return `<tr>

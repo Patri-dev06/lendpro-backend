@@ -210,7 +210,8 @@ export function DirectInputTab() {
             <TableBody>
               {history.length === 0 ? (
                 <tr><td colSpan={canEdit ? 7 : 6} className="py-10 text-center text-sm text-muted-foreground">No payments recorded yet.</td></tr>
-              ) : history.map((p) => (
+              ) : (<>
+                {history.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell>{formatDate(p.payment_date)}</TableCell>
                   <TableCell className="font-medium">{p.client.name}</TableCell>
@@ -231,7 +232,14 @@ export function DirectInputTab() {
                     </TableCell>
                   )}
                 </TableRow>
-              ))}
+                ))}
+                <TableRow className="border-t-2 bg-muted/40">
+                  <TableCell className="py-3 text-xs font-semibold text-muted-foreground">Total</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{history.length} transactions</TableCell>
+                  <TableCell className="text-right num font-bold">{formatPHP(history.reduce((s, p) => s + p.amount, 0))}</TableCell>
+                  <TableCell colSpan={canEdit ? 4 : 3} />
+                </TableRow>
+              </>)}
             </TableBody>
           </Table>
         </div>

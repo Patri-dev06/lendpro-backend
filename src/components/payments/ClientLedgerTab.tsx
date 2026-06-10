@@ -125,9 +125,9 @@ export function ClientLedgerTab() {
   <div class="info-row"><span class="info-lbl">Store / Business</span><span class="info-val">${client.store_name}</span></div>
   <div class="info-row"><span class="info-lbl">Loan Type</span><span class="info-val">${LOAN_TYPE_LABELS[loan.loan_type as keyof typeof LOAN_TYPE_LABELS] ?? loan.loan_type}</span></div>
   <div class="info-row"><span class="info-lbl">Address</span><span class="info-val">${client.address}</span></div>
-  <div class="info-row"><span class="info-lbl">Release Date</span><span class="info-val">${loan.release_date}</span></div>
+  <div class="info-row"><span class="info-lbl">Release Date</span><span class="info-val">${formatDate(loan.release_date)}</span></div>
   <div class="info-row"><span class="info-lbl">Phone</span><span class="info-val">${client.phone}</span></div>
-  <div class="info-row"><span class="info-lbl">Due Date</span><span class="info-val">${loan.due_date}</span></div>
+  <div class="info-row"><span class="info-lbl">Due Date</span><span class="info-val">${formatDate(loan.due_date)}</span></div>
   <div class="info-row"><span class="info-lbl">Starting Balance</span><span class="info-val">${formatPHP(loan.total_receivable)}</span></div>
   <div class="info-row"><span class="info-lbl">Daily Payment</span><span class="info-val">${formatPHP(loan.daily_payment)}</span></div>
   <div class="info-row"><span class="info-lbl">Term of Loan</span><span class="info-val">${loan.term_days} days</span></div>

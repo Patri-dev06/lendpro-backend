@@ -304,6 +304,11 @@ function ReportTable({ category, rows }: { category: Category; rows: unknown[] }
               <TableCell className="text-xs text-muted-foreground">{p.remarks ?? "—"}</TableCell>
             </TableRow>
           ))}
+          <TableRow className="border-t-2 bg-muted/40">
+            <TableCell colSpan={3} className="py-3 font-semibold text-sm">{data.length} transaction{data.length !== 1 ? "s" : ""}</TableCell>
+            <TableCell className="text-right num font-bold">{formatPHP(data.reduce((s, p) => s + p.amount, 0))}</TableCell>
+            <TableCell colSpan={2} />
+          </TableRow>
         </TableBody>
       </Table>
     );
@@ -336,6 +341,13 @@ function ReportTable({ category, rows }: { category: Category; rows: unknown[] }
               <TableCell><span className="rounded-full border px-2 py-0.5 text-xs capitalize">{l.status}</span></TableCell>
             </TableRow>
           ))}
+          <TableRow className="border-t-2 bg-muted/40">
+            <TableCell colSpan={3} className="py-3 font-semibold text-sm">{data.length} loan{data.length !== 1 ? "s" : ""}</TableCell>
+            <TableCell className="text-right num font-bold">{formatPHP(data.reduce((s, l) => s + l.principal, 0))}</TableCell>
+            <TableCell className="text-right num font-bold">{formatPHP(data.reduce((s, l) => s + l.total_receivable, 0))}</TableCell>
+            <TableCell className="text-right num font-bold">{formatPHP(data.reduce((s, l) => s + l.current_balance, 0))}</TableCell>
+            <TableCell colSpan={2} />
+          </TableRow>
         </TableBody>
       </Table>
     );
@@ -370,6 +382,12 @@ function ReportTable({ category, rows }: { category: Category; rows: unknown[] }
               </TableCell>
             </TableRow>
           ))}
+          <TableRow className="border-t-2 bg-muted/40">
+            <TableCell colSpan={4} className="py-3 font-semibold text-sm">{data.length} collector{data.length !== 1 ? "s" : ""}</TableCell>
+            <TableCell className="text-right num font-bold">{formatPHP(data.reduce((s, c) => s + c.expected, 0))}</TableCell>
+            <TableCell className="text-right num font-bold">{formatPHP(data.reduce((s, c) => s + c.collected, 0))}</TableCell>
+            <TableCell />
+          </TableRow>
         </TableBody>
       </Table>
     );
@@ -392,6 +410,11 @@ function ReportTable({ category, rows }: { category: Category; rows: unknown[] }
               <TableCell className="text-right">{r.transactions}</TableCell>
             </TableRow>
           ))}
+          <TableRow className="border-t-2 bg-muted/40">
+            <TableCell className="py-3 font-semibold text-sm">All months</TableCell>
+            <TableCell className="text-right num font-bold">{formatPHP(data.reduce((s, r) => s + Number(r.collected), 0))}</TableCell>
+            <TableCell className="text-right font-bold">{data.reduce((s, r) => s + r.transactions, 0)}</TableCell>
+          </TableRow>
         </TableBody>
       </Table>
     );
@@ -414,6 +437,11 @@ function ReportTable({ category, rows }: { category: Category; rows: unknown[] }
               <TableCell className="text-right">{r.count}</TableCell>
             </TableRow>
           ))}
+          <TableRow className="border-t-2 bg-muted/40">
+            <TableCell className="py-3 font-semibold text-sm">All months</TableCell>
+            <TableCell className="text-right num font-bold">{formatPHP(data.reduce((s, r) => s + Number(r.releases), 0))}</TableCell>
+            <TableCell className="text-right font-bold">{data.reduce((s, r) => s + r.count, 0)}</TableCell>
+          </TableRow>
         </TableBody>
       </Table>
     );
