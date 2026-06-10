@@ -99,7 +99,7 @@ class ReportController extends Controller
             ->when($request->action, fn ($q, $a) => $q->where('action', $a))
             ->when($request->user_id, fn ($q, $id) => $q->where('user_id', $id))
             ->orderByDesc('performed_at')
-            ->limit(200)
+            ->limit(2000)
             ->get();
 
         return response()->json($logs);
