@@ -183,51 +183,6 @@ export function UploadExcelTab() {
     }
   }
 
-  // ── Example template download (static, no API needed) ─────────────────
-  function handleDownloadExample() {
-    const esc = (v: string | number) => {
-      const s = String(v ?? "");
-      return s.includes(",") || s.includes('"') || s.includes("\n")
-        ? `"${s.replace(/"/g, '""')}"`
-        : s;
-    };
-    const row = (...cells: (string | number)[]) => cells.map(esc).join(",");
-
-    const today = new Date().toISOString().slice(0, 10);
-    const lines = [
-      row(
-        "loan_number", "payment_date", "amount", "remarks",
-        "── REFERENCE ONLY (ignored on upload) ──",
-        "client_name", "store_name", "daily_payment",
-      ),
-      row("LN-2026-0001", today, 500,   "",                    "", "Juan dela Cruz",  "JDC Sari-sari Store",   500),
-      row("LN-2026-0002", today, 300,   "partial payment",     "", "Maria Santos",    "Santos General Merch",  500),
-      row("LN-2026-0003", today, 750,   "",                    "", "Pedro Reyes",     "Reyes Hardware",        750),
-      row("LN-2026-0004", today, 1000,  "advance payment",     "", "Ana Lim",         "Lim Bakery",           1000),
-    ];
-
-    const notes = [
-      "",
-      row("── HOW TO FILL THIS FILE ──"),
-      row("1. loan_number  — Do NOT edit. This must match the system exactly."),
-      row("2. payment_date — Format must be YYYY-MM-DD (e.g. " + today + "). Change if payment was on a different date."),
-      row("3. amount       — Enter the actual amount collected. Edit if it differs from the daily payment."),
-      row("4. remarks      — Optional. Leave blank or add a short note (e.g. \"partial\", \"advance\")."),
-      row("5. Delete entire rows for clients who did NOT pay today."),
-      row("6. Do NOT delete the header row (first row)."),
-      row("7. Columns after 'remarks' are for reference only — they are ignored when uploading."),
-    ];
-
-    const csv = [...lines, ...notes].join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = "collection-upload-example.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
@@ -312,10 +267,6 @@ export function UploadExcelTab() {
                 ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 : <Download className="mr-2 h-4 w-4" />}
               {generating ? "Generating…" : "Download Template"}
-            </Button>
-            <Button variant="outline" onClick={handleDownloadExample} className="w-full sm:w-auto">
-              <FileSpreadsheet className="mr-2 h-4 w-4" />
-              Download Example Format
             </Button>
           </div>
         </div>

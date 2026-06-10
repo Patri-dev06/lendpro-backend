@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { Printer, FileSpreadsheet, Loader2 } from "lucide-react";
+import { Printer, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
-import { printCollectionSheet, exportCollectionSheetCsv, type CollectionLoan } from "@/lib/loan-prints";
+import { printCollectionSheet, type CollectionLoan } from "@/lib/loan-prints";
 import { toast } from "sonner";
 
 interface Collector {
@@ -79,17 +79,6 @@ export function CollectionSheetDialog() {
     }
   };
 
-  const handleExcel = async () => {
-    setActing(true);
-    try {
-      const hint = selectedCollector ? selectedCollector.name : "All Collectors";
-      exportCollectionSheetCsv(filteredLoans, settings.companyName, settings.companyAddr, hint);
-      setOpen(false);
-    } finally {
-      setActing(false);
-    }
-  };
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -99,7 +88,7 @@ export function CollectionSheetDialog() {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="w-[95vw] max-w-sm rounded-2xl">
         <DialogHeader>
           <DialogTitle>Collection Sheet</DialogTitle>
         </DialogHeader>
@@ -152,18 +141,9 @@ export function CollectionSheetDialog() {
               </div>
             </div>
 
-            <div className="flex gap-2 pt-1">
+            <div className="pt-1">
               <Button
-                variant="outline"
-                className="flex-1"
-                onClick={handleExcel}
-                disabled={acting || filteredLoans.length === 0}
-              >
-                <FileSpreadsheet className="mr-2 h-4 w-4" />
-                Export Excel
-              </Button>
-              <Button
-                className="flex-1"
+                className="w-full"
                 onClick={handlePrint}
                 disabled={acting || filteredLoans.length === 0}
               >
