@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Printer, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Printer, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -7,7 +7,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StatusBadge } from "@/components/finance/StatusBadge";
 import { formatPHP, formatDate } from "@/lib/format";
 import { LOAN_TYPE_LABELS } from "@/lib/loan-constants";
-import { printLedger } from "@/lib/loan-prints";
+import { printLedger, type PrintScheduleRow } from "@/lib/loan-prints";
+import { apiRequest } from "@/lib/api";
+import { useRole } from "@/lib/role-context";
 import { cn } from "@/lib/utils";
 import type { ApiLoan } from "@/components/loans/LoanCreateSection";
 import { LoanDetailSheet } from "@/components/loans/LoanDetailSheet";
@@ -19,6 +21,7 @@ interface Props {
 }
 
 export function ActiveLoanTable({ loans, loading, onReconstructed }: Props) {
+  const { token } = useRole();
   const [q, setQ]               = useState("");
   const [status, setStatus]     = useState("all");
   const [type, setType]         = useState("all");
@@ -26,6 +29,21 @@ export function ActiveLoanTable({ loans, loading, onReconstructed }: Props) {
   const [sortCol, setSortCol]   = useState<SortCol | null>(null);
   const [sortDir, setSortDir]   = useState<"asc" | "desc">("desc");
   const [selectedLoan, setSelectedLoan] = useState<ApiLoan | null>(null);
+  const [printingId, setPrintingId] = useState<number | null>(null);
+
+  async function handlePrint(loan: ApiLoan) {
+    setPrintingId(loan.id);
+    try {
+      const data = await apiRequest<{ schedule: PrintScheduleRow[] }>(
+        "GET", `reports/client-ledger?loan_id=${loan.id}`, { token }
+      );
+      printLedger(loan, data.schedule);
+    } catch {
+      printLedger(loan);
+    } finally {
+      setPrintingId(null);
+    }
+  }
 
   function toggleSort(col: SortCol) {
     if (sortCol === col) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
@@ -192,10 +210,14 @@ export function ActiveLoanTable({ loans, loading, onReconstructed }: Props) {
                   <Button
                     size="sm" variant="ghost"
                     className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                    onClick={() => printLedger(l)}
+                    onClick={() => handlePrint(l)}
+                    disabled={printingId === l.id}
                     title="Print ledger"
                   >
-                    <Printer className="h-3.5 w-3.5" />
+                    {printingId === l.id
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Printer className="h-3.5 w-3.5" />
+                    }
                   </Button>
                 </TableCell>
 

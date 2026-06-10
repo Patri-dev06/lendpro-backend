@@ -23,6 +23,15 @@ export interface PrintLoan {
   client: PrintClient;
 }
 
+export interface PrintScheduleRow {
+  day: number;
+  scheduled_date: string;
+  expected: number;
+  actual: number;
+  balance_after: number;
+  status: string;
+}
+
 const COMMON_STYLES = `
   body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:32px;color:#111}
   .div{border-top:2px solid #000;margin:10px 0}
@@ -36,7 +45,7 @@ const COMMON_STYLES = `
 
 /* ── Client Ledger ───────────────────────────────────────────────────── */
 
-export function printLedger(loan: PrintLoan) {
+export function printLedger(loan: PrintLoan, schedule?: PrintScheduleRow[]) {
   const win = window.open("", "_blank");
   if (!win) return;
   const { client } = loan;
@@ -79,23 +88,38 @@ export function printLedger(loan: PrintLoan) {
     <tr><th>#</th><th>Date</th><th class="right">Daily Due</th><th class="right">Amount Paid</th><th class="right">Running Balance</th><th>Status</th></tr>
   </thead>
   <tbody>
-    ${Array.from({ length: loan.term_days }, (_, i) => {
-      const paidDays  = loan.daily_payment > 0
-        ? Math.round((loan.total_receivable - loan.current_balance) / loan.daily_payment)
-        : 0;
-      const isPaid    = i < paidDays;
-      const bal       = Math.max(0, loan.total_receivable - (Math.min(i + 1, paidDays) * loan.daily_payment));
-      const rowDate   = new Date(loan.release_date.slice(0, 10) + "T00:00:00");
-      rowDate.setDate(rowDate.getDate() + i + 1);
-      const dateStr   = rowDate.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
-      return `<tr>
-        <td>${i + 1}</td><td>${dateStr}</td>
-        <td class="right">${formatPHP(loan.daily_payment)}</td>
-        <td class="right ${isPaid ? "paid" : ""}">${isPaid ? formatPHP(loan.daily_payment) : "—"}</td>
-        <td class="right">${formatPHP(bal)}</td>
-        <td class="${isPaid ? "paid" : "missed"}">${isPaid ? "Paid" : "Pending"}</td>
-      </tr>`;
-    }).join("")}
+    ${schedule
+      ? schedule.map((row, idx) => {
+          const d = new Date(row.scheduled_date.slice(0, 10) + "T00:00:00");
+          const dateStr = isNaN(d.getTime()) ? row.scheduled_date.slice(0, 10) : d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+          const isPaid  = row.actual > 0;
+          const statusLabel = row.status === "paid" ? "Paid" : row.status === "partial" ? "Partial" : "Pending";
+          return `<tr>
+            <td>${idx + 1}</td><td>${dateStr}</td>
+            <td class="right">${formatPHP(row.expected)}</td>
+            <td class="right ${isPaid ? "paid" : ""}">${isPaid ? formatPHP(row.actual) : "—"}</td>
+            <td class="right">${formatPHP(row.balance_after)}</td>
+            <td class="${isPaid ? "paid" : "missed"}">${statusLabel}</td>
+          </tr>`;
+        }).join("")
+      : Array.from({ length: loan.term_days }, (_, i) => {
+          const paidDays = loan.daily_payment > 0
+            ? Math.round((loan.total_receivable - loan.current_balance) / loan.daily_payment)
+            : 0;
+          const isPaid = i < paidDays;
+          const bal    = Math.max(0, loan.total_receivable - (Math.min(i + 1, paidDays) * loan.daily_payment));
+          const rowDate = new Date(loan.release_date.slice(0, 10) + "T00:00:00");
+          rowDate.setDate(rowDate.getDate() + i + 1);
+          const dateStr = rowDate.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+          return `<tr>
+            <td>${i + 1}</td><td>${dateStr}</td>
+            <td class="right">${formatPHP(loan.daily_payment)}</td>
+            <td class="right ${isPaid ? "paid" : ""}">${isPaid ? formatPHP(loan.daily_payment) : "—"}</td>
+            <td class="right">${formatPHP(bal)}</td>
+            <td class="${isPaid ? "paid" : "missed"}">${isPaid ? "Paid" : "Pending"}</td>
+          </tr>`;
+        }).join("")
+    }
     <tr class="total-row">
       <td colspan="3">Total Paid</td>
       <td class="right">${formatPHP(loan.total_receivable - loan.current_balance)}</td>

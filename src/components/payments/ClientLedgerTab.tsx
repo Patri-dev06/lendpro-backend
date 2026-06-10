@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BookOpen, Loader2, Printer } from "lucide-react";
+import { printLedger, type PrintScheduleRow } from "@/lib/loan-prints";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,7 +9,6 @@ import { InfoItem } from "@/components/payments/InfoItem";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { formatPHP, formatDate } from "@/lib/format";
-import { LOAN_TYPE_LABELS } from "@/lib/loan-constants";
 import { toast } from "sonner";
 
 interface ApiLoanSummary {
@@ -36,6 +36,8 @@ interface LedgerResponse {
     number: string;
     loan_type: string;
     principal: number;
+    interest: number;
+    service_charge: number;
     total_receivable: number;
     daily_payment: number;
     term_days: number;
@@ -57,7 +59,6 @@ export function ClientLedgerTab() {
   const [ledger, setLedger]         = useState<LedgerResponse | null>(null);
   const [loadingLoans, setLoadingLoans] = useState(true);
   const [loadingLedger, setLoadingLedger] = useState(false);
-  const printRef = useRef<HTMLDivElement>(null);
 
   const fetchLoans = useCallback(async () => {
     if (!token) return;
@@ -94,64 +95,31 @@ export function ClientLedgerTab() {
   function handlePrint() {
     if (!ledger) return;
     const { loan, client } = ledger;
-    const content = printRef.current?.innerHTML ?? "";
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(`<!DOCTYPE html><html><head><title>Client Ledger — ${client.name}</title>
-<style>
-  body{font-family:Arial,sans-serif;font-size:11px;padding:32px;color:#111;margin:0}
-  h2{font-size:16px;margin:0 0 2px}.co{font-size:13px;font-weight:bold;margin-bottom:4px}
-  .div2{border-top:2px solid #000;margin:10px 0}
-  .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin-bottom:12px}
-  .info-row{display:flex;gap:8px}.info-lbl{color:#555;min-width:110px}.info-val{font-weight:bold}
-  table{width:100%;border-collapse:collapse;margin-top:10px}
-  th{background:#f0f0f0;font-size:10px;text-transform:uppercase;padding:6px 8px;border:1px solid #ccc}
-  td{padding:5px 8px;border:1px solid #e0e0e0}
-  .right{text-align:right}.paid{color:#16a34a}.pending{color:#9ca3af}.date-paid{color:#16a34a;font-weight:600}
-  .total-row td{font-weight:bold;background:#f8f8f8;border-top:2px solid #aaa}
-  .sig-block{display:flex;gap:40px;margin-top:32px}
-  .sig{flex:1;text-align:center;font-size:9px}
-  .sig-line{border-top:1px solid #000;margin-bottom:4px}
-  .sig-name{font-weight:bold;font-size:10px}
-  .sig-role{color:#555}
-  @media print{body{padding:20px}}
-</style></head><body>
-<div class="co">BuenaMano Lending Corporation</div>
-<h2>Client Ledger — ${client.name}</h2>
-<div class="div2"></div>
-<div class="info-grid">
-  <div class="info-row"><span class="info-lbl">Client Name</span><span class="info-val">${client.name}</span></div>
-  <div class="info-row"><span class="info-lbl">Loan Number</span><span class="info-val">${loan.number}</span></div>
-  <div class="info-row"><span class="info-lbl">Store / Business</span><span class="info-val">${client.store_name}</span></div>
-  <div class="info-row"><span class="info-lbl">Loan Type</span><span class="info-val">${LOAN_TYPE_LABELS[loan.loan_type as keyof typeof LOAN_TYPE_LABELS] ?? loan.loan_type}</span></div>
-  <div class="info-row"><span class="info-lbl">Address</span><span class="info-val">${client.address}</span></div>
-  <div class="info-row"><span class="info-lbl">Release Date</span><span class="info-val">${formatDate(loan.release_date)}</span></div>
-  <div class="info-row"><span class="info-lbl">Phone</span><span class="info-val">${client.phone}</span></div>
-  <div class="info-row"><span class="info-lbl">Due Date</span><span class="info-val">${formatDate(loan.due_date)}</span></div>
-  <div class="info-row"><span class="info-lbl">Starting Balance</span><span class="info-val">${formatPHP(loan.total_receivable)}</span></div>
-  <div class="info-row"><span class="info-lbl">Daily Payment</span><span class="info-val">${formatPHP(loan.daily_payment)}</span></div>
-  <div class="info-row"><span class="info-lbl">Term of Loan</span><span class="info-val">${loan.term_days} days</span></div>
-</div>
-${content}
-<div class="sig-block">
-  <div class="sig">
-    <br/><br/>
-    <div class="sig-line"></div>
-    <div class="sig-name">${ledger.client.name}</div>
-    <div class="sig-role">Signature of Client</div>
-    <div style="margin-top:4px">Date: _______________</div>
-  </div>
-  <div class="sig">
-    <br/><br/>
-    <div class="sig-line"></div>
-    <div class="sig-name">___________________________</div>
-    <div class="sig-role">Manager / Verified by</div>
-    <div style="margin-top:4px">Date: _______________</div>
-  </div>
-</div>
-<div style="margin-top:16px;font-size:9px;color:#888">Printed: ${new Date().toLocaleDateString("en-PH")} — BuenaMano Lending Corporation</div>
-</body></html>`);
-    win.document.close(); win.focus(); win.print();
+    const schedule: PrintScheduleRow[] = ledger.schedule.map((r) => ({
+      day:            r.day,
+      scheduled_date: r.scheduled_date,
+      expected:       r.expected,
+      actual:         r.actual,
+      balance_after:  r.balance_after,
+      status:         r.status,
+    }));
+    printLedger(
+      {
+        number:          loan.number,
+        loan_type:       loan.loan_type,
+        principal:       loan.principal,
+        interest:        loan.interest,
+        service_charge:  loan.service_charge,
+        total_receivable: loan.total_receivable,
+        daily_payment:   loan.daily_payment,
+        term_days:       loan.term_days,
+        current_balance: loan.current_balance,
+        release_date:    loan.release_date,
+        due_date:        loan.due_date,
+        client:          { name: client.name, store_name: client.store_name, address: client.address, phone: client.phone },
+      },
+      schedule,
+    );
   }
 
   return (
@@ -205,7 +173,7 @@ ${content}
               <h3 className="font-display text-base font-semibold">Daily Payment Ledger</h3>
               <p className="text-xs text-muted-foreground">For reconciliation with client's own record (blue card)</p>
             </div>
-            <div ref={printRef} className="overflow-x-auto">
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
