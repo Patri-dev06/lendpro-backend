@@ -374,6 +374,144 @@ ${groups.map((g, i) => collectorPage(g, i === groups.length - 1, i === 0)).join(
 }
 
 
+/* ── Active Loan Ledger — PDF export ─────────────────────────────────── */
+
+export interface LedgerLoan {
+  number: string;
+  loan_type: string;
+  total_receivable: number;
+  daily_payment: number;
+  current_balance: number;
+  due_date: string;
+  status: string;
+  client: { name: string; store_name: string };
+  collector: { name: string };
+}
+
+const LOAN_STATUS_LABELS: Record<string, string> = {
+  new: "New", renew: "Renew", overdue: "Overdue", "past-due": "Past Due", paid: "Fully Paid",
+};
+
+export function exportLoanLedgerPdf(loans: LedgerLoan[], filterLabel = "All loans"): void {
+  const win = window.open("", "_blank");
+  if (!win) return;
+  const today = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+  const totalReceivable = loans.reduce((s, l) => s + l.total_receivable, 0);
+  const totalDaily      = loans.reduce((s, l) => s + l.daily_payment, 0);
+  const totalBalance    = loans.reduce((s, l) => s + l.current_balance, 0);
+
+  win.document.write(`<!DOCTYPE html><html><head><title>Active Loan Ledger</title>
+<style>
+  body{font-family:Arial,sans-serif;font-size:10px;margin:0;padding:24px;color:#111}
+  .co{font-size:14px;font-weight:bold;margin-bottom:2px}
+  .title{font-size:12px;font-weight:bold;margin-bottom:2px}
+  .meta{font-size:9px;color:#555;margin-bottom:8px}
+  .divider{border-top:2px solid #000;margin:8px 0 10px}
+  table{width:100%;border-collapse:collapse;font-size:9.5px}
+  th{background:#f0f0f0;padding:5px 6px;border:1px solid #bbb;font-size:9px;text-transform:uppercase;text-align:left}
+  th.r,td.r{text-align:right}
+  td{padding:4px 6px;border:1px solid #ddd;vertical-align:middle}
+  td.r{font-family:monospace}
+  td.muted{color:#555;font-size:9px}
+  tr:nth-child(even) td{background:#fafafa}
+  .total-row td{font-weight:bold;background:#eeeeee;border-top:2px solid #aaa}
+  .footer{margin-top:12px;font-size:8px;color:#888}
+  @media print{body{padding:16px}@page{size:A4 landscape;margin:8mm}}
+</style></head><body>
+<div class="co">BuenaMano Lending Corporation</div>
+<div class="title">Active Loan Ledger</div>
+<div class="meta">Filter: ${filterLabel} &nbsp;|&nbsp; ${loans.length} loan${loans.length !== 1 ? "s" : ""} &nbsp;|&nbsp; Printed: ${today}</div>
+<div class="divider"></div>
+<table>
+  <thead>
+    <tr>
+      <th>Loan #</th><th>Type</th><th>Client</th><th>Store / Business</th>
+      <th class="r">Total Receivable</th><th class="r">Daily Payment</th>
+      <th class="r">Current Balance</th><th>Status</th><th>Due Date</th><th>Collector</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${loans.map((l) => `<tr>
+      <td class="muted">${l.number}</td>
+      <td>${LOAN_TYPE_LABELS[l.loan_type as keyof typeof LOAN_TYPE_LABELS] ?? l.loan_type}</td>
+      <td><strong>${l.client.name}</strong></td>
+      <td class="muted">${l.client.store_name}</td>
+      <td class="r">${formatPHP(l.total_receivable)}</td>
+      <td class="r">${formatPHP(l.daily_payment)}</td>
+      <td class="r"><strong>${formatPHP(l.current_balance)}</strong></td>
+      <td>${LOAN_STATUS_LABELS[l.status] ?? l.status}</td>
+      <td class="muted">${formatDate(l.due_date)}</td>
+      <td class="muted">${l.collector.name}</td>
+    </tr>`).join("")}
+    <tr class="total-row">
+      <td colspan="4">Total (${loans.length} loan${loans.length !== 1 ? "s" : ""})</td>
+      <td class="r">${formatPHP(totalReceivable)}</td>
+      <td class="r">${formatPHP(totalDaily)}</td>
+      <td class="r">${formatPHP(totalBalance)}</td>
+      <td colspan="3"></td>
+    </tr>
+  </tbody>
+</table>
+<div class="footer">BuenaMano Lending Corporation — Active Loan Ledger — ${today}</div>
+</body></html>`);
+  win.document.close(); win.focus(); win.print();
+}
+
+/* ── Active Loan Ledger — CSV export ─────────────────────────────────── */
+
+export function exportLoanLedgerCsv(loans: LedgerLoan[], filenameHint = "all"): void {
+  const dateSlug = new Date().toISOString().slice(0, 10);
+  const filename = `Active Loan Ledger - ${filenameHint} - ${dateSlug}.csv`;
+  const today    = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+
+  const lines: string[] = [];
+  const esc = (v: string | number) => {
+    const s = String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const row   = (...cells: (string | number)[]) => lines.push(cells.map(esc).join(","));
+  const blank = () => lines.push("");
+
+  row("BuenaMano Lending Corporation");
+  row("Active Loan Ledger");
+  row(`Generated: ${today}`);
+  blank();
+  row("Loan #", "Type", "Client Name", "Store / Business", "Total Receivable", "Daily Payment", "Current Balance", "Status", "Due Date", "Collector");
+
+  for (const l of loans) {
+    row(
+      l.number,
+      LOAN_TYPE_LABELS[l.loan_type as keyof typeof LOAN_TYPE_LABELS] ?? l.loan_type,
+      l.client.name,
+      l.client.store_name,
+      l.total_receivable,
+      l.daily_payment,
+      l.current_balance,
+      LOAN_STATUS_LABELS[l.status] ?? l.status,
+      l.due_date.slice(0, 10),
+      l.collector.name,
+    );
+  }
+
+  blank();
+  row(
+    `Total (${loans.length} loan${loans.length !== 1 ? "s" : ""})`, "", "", "",
+    loans.reduce((s, l) => s + l.total_receivable, 0),
+    loans.reduce((s, l) => s + l.daily_payment, 0),
+    loans.reduce((s, l) => s + l.current_balance, 0),
+    "", "", "",
+  );
+
+  const csv  = lines.join("\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /* ── Collection Sheet CSV Export ─────────────────────────────────────── */
 
 export function exportCollectionSheetCsv(

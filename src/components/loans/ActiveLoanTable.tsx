@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Pencil, Printer, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, FileDown, FileText, Loader2, Pencil, Printer, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,7 @@ import { DateInput } from "@/components/shared/DateInput";
 import { formatPHP, formatDate, addDays } from "@/lib/format";
 import { LOAN_TYPE_LABELS, TERM_OPTIONS } from "@/lib/loan-constants";
 import { calcInterest, calcDailyPayment } from "@/lib/loan-calc";
-import { printLedger, type PrintScheduleRow } from "@/lib/loan-prints";
+import { printLedger, exportLoanLedgerPdf, exportLoanLedgerCsv, type PrintScheduleRow } from "@/lib/loan-prints";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { cn } from "@/lib/utils";
@@ -171,6 +171,18 @@ export function ActiveLoanTable({ loans, loading, onReconstructed, onLoanUpdated
 
   const activeFilters = [status !== "all", type !== "all", collector !== "all", q !== ""].filter(Boolean).length;
 
+  const filterLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (status !== "all") parts.push(`Status: ${STATUS_DISPLAY[status] ?? status}`);
+    if (type !== "all")   parts.push(`Type: ${LOAN_TYPE_LABELS[type as keyof typeof LOAN_TYPE_LABELS] ?? type}`);
+    if (collector !== "all") {
+      const c = collectors.find((c) => String(c.id) === collector);
+      if (c) parts.push(`Collector: ${c.name}`);
+    }
+    if (q) parts.push(`Search: "${q}"`);
+    return parts.length > 0 ? parts.join(" | ") : "All loans";
+  }, [status, type, collector, q, collectors]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function clearFilters() {
     setQ(""); setStatus("all"); setType("all"); setCollector("all");
   }
@@ -187,9 +199,31 @@ export function ActiveLoanTable({ loans, loading, onReconstructed, onLoanUpdated
               {loading ? "Loading…" : `${filtered.length} of ${loans.length} loan${loans.length !== 1 ? "s" : ""}`}
             </p>
           </div>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input className="h-9 w-52 pl-8 text-sm" placeholder="Search loans…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input className="h-9 w-52 pl-8 text-sm" placeholder="Search loans…" value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
+            <Button
+              variant="outline" size="sm"
+              className="h-9 gap-1.5 px-3 text-xs"
+              onClick={() => exportLoanLedgerPdf(sorted, filterLabel)}
+              disabled={sorted.length === 0}
+              title="Export visible rows as PDF"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              PDF
+            </Button>
+            <Button
+              variant="outline" size="sm"
+              className="h-9 gap-1.5 px-3 text-xs"
+              onClick={() => exportLoanLedgerCsv(sorted, filterLabel)}
+              disabled={sorted.length === 0}
+              title="Export visible rows as CSV"
+            >
+              <FileDown className="h-3.5 w-3.5" />
+              CSV
+            </Button>
           </div>
         </div>
 
@@ -466,6 +500,10 @@ export function ActiveLoanTable({ loans, loading, onReconstructed, onLoanUpdated
 }
 
 type SortCol = "total_receivable" | "daily_payment" | "current_balance" | "client_name" | "due_date";
+
+const STATUS_DISPLAY: Record<string, string> = {
+  new: "New", renew: "Renew", overdue: "Overdue", "past-due": "Past Due", paid: "Fully Paid",
+};
 
 function SortHead({
   col, label, sortCol, sortDir, onSort, align = "left",
