@@ -27,9 +27,10 @@ interface Props {
   payment: PaymentToEdit | null;
   onClose: () => void;
   onSaved: () => void;
+  adminPin?: string;
 }
 
-export function EditPaymentDialog({ payment, onClose, onSaved }: Props) {
+export function EditPaymentDialog({ payment, onClose, onSaved, adminPin }: Props) {
   const { token } = useRole();
   const [amount, setAmount]   = useState(0);
   const [date, setDate]       = useState("");
@@ -39,10 +40,10 @@ export function EditPaymentDialog({ payment, onClose, onSaved }: Props) {
   useEffect(() => {
     if (payment) {
       setAmount(payment.amount);
-      setDate(payment.payment_date);
+      setDate(payment.payment_date.slice(0, 10));
       setRemarks(payment.remarks ?? "");
     }
-  }, [payment]);
+  }, [payment?.id]);
 
   const previewNewBalance = payment
     ? Math.max(0, payment.previous_balance - amount)
@@ -52,12 +53,17 @@ export function EditPaymentDialog({ payment, onClose, onSaved }: Props) {
     !!payment?.loan?.release_date && !!date && date < payment.loan.release_date;
 
   async function handleSave() {
-    if (!payment || !token || amount <= 0) return;
+    if (!payment || !token || amount <= 0 || !date) return;
     setSaving(true);
     try {
       await apiRequest("PATCH", `payments/${payment.id}`, {
         token,
-        body: { amount, payment_date: date, remarks: remarks || null },
+        body: {
+          amount,
+          payment_date: date,
+          remarks: remarks || null,
+          ...(adminPin ? { admin_pin: adminPin } : {}),
+        },
       });
       toast.success("Payment updated.");
       onSaved();
@@ -132,7 +138,7 @@ export function EditPaymentDialog({ payment, onClose, onSaved }: Props) {
               <Button variant="outline" onClick={handleClose} disabled={saving}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={saving || amount <= 0 || beforeRelease}>
+              <Button onClick={handleSave} disabled={saving || amount <= 0 || !date || beforeRelease}>
                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save changes
               </Button>

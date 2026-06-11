@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { EditPaymentDialog, type PaymentToEdit } from "@/components/payments/EditPaymentDialog";
+import { AdminPinDialog } from "@/components/payments/AdminPinDialog";
 import { Paginator } from "@/components/shared/Paginator";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
@@ -56,9 +57,11 @@ interface EntryRow {
   done?: boolean;
 }
 
+type PinDialogState = { mode: "delete" | "edit"; payment: ApiPayment } | null;
+
 export function DirectInputTab() {
   const { token, role } = useRole();
-  const canEdit = hasPermission(role, "payments:write");
+  const canSubmit = hasPermission(role, "payments:write");
 
   const [loans, setLoans]           = useState<ApiLoan[]>([]);
   const [collectors, setCollectors] = useState<Collector[]>([]);
@@ -70,6 +73,8 @@ export function DirectInputTab() {
   const [entries, setEntries]         = useState<EntryRow[]>([]);
   const [saving, setSaving]           = useState(false);
   const [editTarget, setEditTarget]   = useState<PaymentToEdit | null>(null);
+  const [editAdminPin, setEditAdminPin] = useState<string>("");
+  const [pinDialog, setPinDialog]     = useState<PinDialogState>(null);
   const [page, setPage]               = useState(1);
 
   const loadData = useCallback(async () => {
@@ -94,13 +99,11 @@ export function DirectInputTab() {
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { setPage(1); }, [history]);
 
-  // Loans belonging to the selected collector
   const collectorLoans = useMemo(
     () => collectorId ? loans.filter((l) => String(l.collector_id) === collectorId) : [],
     [loans, collectorId],
   );
 
-  // Grouped the same way as the printed collection sheet, sorted alphabetically within each section
   const loanGroups = useMemo(() => {
     const alpha = (arr: ApiLoan[]) => [...arr].sort((a, b) => a.client.name.localeCompare(b.client.name));
     const isPastDue = (l: ApiLoan) => ["overdue", "past-due"].includes(l.status);
@@ -111,7 +114,6 @@ export function DirectInputTab() {
     };
   }, [collectorLoans]);
 
-  // Rebuild entry rows in grouped order whenever collector changes
   useEffect(() => {
     const ordered = [...loanGroups.active, ...loanGroups.reconstruct, ...loanGroups.pastDue];
     setEntries(
@@ -134,30 +136,10 @@ export function DirectInputTab() {
 
   const toSubmit = entries.filter((e) => parseFloat(e.amount) > 0 && !e.done);
 
-  const isAdmin = role === "admin";
+  const isAdmin         = role === "admin";
+  const canEditDirect   = isAdmin || role === "accounting_clerk";
 
-  async function handleRequestDelete(payment: ApiPayment) {
-    if (!token) return;
-    if (!window.confirm(`Request deletion of ₱${payment.amount.toFixed(2)} payment for ${payment.client.name}?\nAn administrator will need to approve it.`)) return;
-    try {
-      const updated = await apiRequest<ApiPayment>("POST", `payments/${payment.id}/request-delete`, { token });
-      setHistory((prev) => prev.map((p) => p.id === updated.id ? updated : p));
-      toast.success("Deletion request submitted. Awaiting admin approval.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to request deletion.");
-    }
-  }
-
-  async function handleCancelDeleteRequest(payment: ApiPayment) {
-    if (!token) return;
-    try {
-      const updated = await apiRequest<ApiPayment>("DELETE", `payments/${payment.id}/request-delete`, { token });
-      setHistory((prev) => prev.map((p) => p.id === updated.id ? updated : p));
-      toast.success("Deletion request cancelled.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to cancel request.");
-    }
-  }
+  // ── Delete handlers ────────────────────────────────────────────────────────
 
   async function handleApproveDelete(payment: ApiPayment) {
     if (!token) return;
@@ -172,6 +154,78 @@ export function DirectInputTab() {
     }
   }
 
+  async function handleCancelDeleteRequest(payment: ApiPayment) {
+    if (!token) return;
+    try {
+      const updated = await apiRequest<ApiPayment>("DELETE", `payments/${payment.id}/request-delete`, { token });
+      setHistory((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+      toast.success("Deletion request cancelled.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to cancel request.");
+    }
+  }
+
+  async function handleRequestDelete(payment: ApiPayment) {
+    if (!token) return;
+    if (!window.confirm(`Request deletion of ₱${payment.amount.toFixed(2)} payment for ${payment.client.name}?\nAn administrator will need to approve it.`)) return;
+    try {
+      const updated = await apiRequest<ApiPayment>("POST", `payments/${payment.id}/request-delete`, { token });
+      setHistory((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+      toast.success("Deletion request submitted. Awaiting admin approval.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to request deletion.");
+    }
+  }
+
+  // ── PIN dialog handlers ────────────────────────────────────────────────────
+
+  async function handlePinConfirm(pin: string) {
+    if (!pinDialog || !token) return;
+
+    if (pinDialog.mode === "edit") {
+      // Verify PIN first, then open edit dialog
+      await apiRequest("POST", "settings/verify-admin-pin", { token, body: { pin } });
+      setEditAdminPin(pin);
+      setEditTarget(pinDialog.payment as PaymentToEdit);
+      setPinDialog(null);
+    } else {
+      // Delete with PIN
+      const payment = pinDialog.payment;
+      await apiRequest("DELETE", `payments/${payment.id}`, {
+        token,
+        body: { admin_pin: pin },
+      });
+      setHistory((prev) => prev.filter((p) => p.id !== payment.id));
+      toast.success("Payment deleted and loan balance restored.");
+      setPinDialog(null);
+      await loadData();
+    }
+  }
+
+  function handlePinRequestInstead() {
+    const payment = pinDialog?.payment;
+    setPinDialog(null);
+    if (payment) handleRequestDelete(payment);
+  }
+
+  function handleEditClick(payment: ApiPayment) {
+    if (canEditDirect) {
+      setEditTarget(payment as PaymentToEdit);
+    } else {
+      setPinDialog({ mode: "edit", payment });
+    }
+  }
+
+  function handleDeleteClick(payment: ApiPayment) {
+    if (isAdmin) {
+      handleApproveDelete(payment);
+    } else {
+      setPinDialog({ mode: "delete", payment });
+    }
+  }
+
+  // ── Batch submit ───────────────────────────────────────────────────────────
+
   async function handleSubmitAll() {
     if (!token || toSubmit.length === 0) return;
     setSaving(true);
@@ -180,7 +234,6 @@ export function DirectInputTab() {
     const updated = [...entries];
     for (const entry of toSubmit) {
       const loan = loans.find((l) => l.id === entry.loanId);
-      // client-side release date guard
       if (loan && date < loan.release_date.slice(0, 10)) {
         const idx = updated.findIndex((e) => e.loanId === entry.loanId);
         if (idx >= 0) updated[idx] = { ...updated[idx], error: `Before release date (${loan.release_date.slice(0, 10)})` };
@@ -262,7 +315,7 @@ export function DirectInputTab() {
               <span className="text-xs text-muted-foreground">
                 {toSubmit.length} of {entries.length} will be recorded
               </span>
-              {canEdit && (
+              {canSubmit && (
                 <Button
                   onClick={handleSubmitAll}
                   disabled={saving || toSubmit.length === 0}
@@ -424,21 +477,30 @@ export function DirectInputTab() {
                     <TableCell className="text-xs text-muted-foreground">{p.remarks ?? "—"}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 justify-end">
-                        {canEdit && !p.delete_requested && (
-                          <Button variant="ghost" size="sm" className="h-7 px-2"
-                            onClick={() => setEditTarget(p as PaymentToEdit)}>
+
+                        {/* Edit pencil — visible to all roles; non-admin/clerk uses PIN */}
+                        {!p.delete_requested && (
+                          <Button
+                            variant="ghost" size="sm" className="h-7 px-2"
+                            title={canEditDirect ? "Edit payment" : "Edit with admin PIN"}
+                            onClick={() => handleEditClick(p)}
+                          >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                         )}
+
+                        {/* Delete / request actions */}
                         {isAdmin ? (
                           p.delete_requested ? (
                             <>
                               <Button variant="ghost" size="sm"
                                 className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                title="Approve deletion"
                                 onClick={() => handleApproveDelete(p)}>
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                               <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground"
+                                title="Cancel deletion request"
                                 onClick={() => handleCancelDeleteRequest(p)}>
                                 <X className="h-3.5 w-3.5" />
                               </Button>
@@ -446,7 +508,8 @@ export function DirectInputTab() {
                           ) : (
                             <Button variant="ghost" size="sm"
                               className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => handleApproveDelete(p)}>
+                              title="Delete payment"
+                              onClick={() => handleDeleteClick(p)}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           )
@@ -460,12 +523,13 @@ export function DirectInputTab() {
                           ) : (
                             <Button variant="ghost" size="sm"
                               className="h-7 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                              title="Request deletion"
-                              onClick={() => handleRequestDelete(p)}>
+                              title="Delete with admin PIN or request deletion"
+                              onClick={() => handleDeleteClick(p)}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           )
                         )}
+
                       </div>
                     </TableCell>
                   </TableRow>
@@ -485,8 +549,21 @@ export function DirectInputTab() {
 
       <EditPaymentDialog
         payment={editTarget}
-        onClose={() => setEditTarget(null)}
+        adminPin={editAdminPin}
+        onClose={() => { setEditTarget(null); setEditAdminPin(""); }}
         onSaved={loadData}
+      />
+
+      <AdminPinDialog
+        open={!!pinDialog}
+        actionDescription={
+          pinDialog?.mode === "delete"
+            ? `Enter the admin PIN to immediately delete this ₱${pinDialog.payment.amount.toFixed(2)} payment for ${pinDialog.payment.client.name}.`
+            : `Enter the admin PIN to edit this ₱${pinDialog?.payment.amount.toFixed(2)} payment for ${pinDialog?.payment.client.name}.`
+        }
+        onConfirm={handlePinConfirm}
+        onRequestInstead={pinDialog?.mode === "delete" ? handlePinRequestInstead : undefined}
+        onCancel={() => setPinDialog(null)}
       />
     </div>
   );
