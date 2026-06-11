@@ -8,9 +8,11 @@ use App\Models\Loan;
 use App\Models\Notification;
 use App\Models\Payment;
 use App\Models\ScheduleRow;
+use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
 class PaymentController extends Controller
 {
@@ -156,8 +158,23 @@ class PaymentController extends Controller
         ]);
     }
 
+    private function isAdminPinValid(?string $pin): bool
+    {
+        if (!$pin) return false;
+        $hash = Setting::get('admin_pin');
+        if (!$hash) return false;
+        return Hash::check($pin, $hash);
+    }
+
     public function update(Request $request, Payment $payment): JsonResponse
     {
+        $user = auth()->user();
+        if (!in_array($user->role, ['admin', 'accounting_clerk'])) {
+            if (!$this->isAdminPinValid($request->input('admin_pin'))) {
+                return response()->json(['message' => 'Admin PIN required to edit this payment.'], 403);
+            }
+        }
+
         $data = $request->validate([
             'amount'       => 'sometimes|numeric|min:0.01',
             'payment_date' => 'sometimes|date',
@@ -257,10 +274,12 @@ class PaymentController extends Controller
         return response()->json($payment->fresh(['client']));
     }
 
-    public function destroy(Payment $payment): JsonResponse
+    public function destroy(Request $request, Payment $payment): JsonResponse
     {
         if (auth()->user()->role !== 'admin') {
-            return response()->json(['message' => 'Only administrators can delete payments.'], 403);
+            if (!$this->isAdminPinValid($request->input('admin_pin'))) {
+                return response()->json(['message' => 'Only administrators can delete payments. Provide the admin PIN to override.'], 403);
+            }
         }
 
         DB::transaction(function () use ($payment) {

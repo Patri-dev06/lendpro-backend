@@ -91,12 +91,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('payments/{payment}',                      [PaymentController::class, 'show']);
         Route::post('payments/{payment}/request-delete',      [PaymentController::class, 'requestDelete']);
         Route::delete('payments/{payment}/request-delete',    [PaymentController::class, 'cancelDeleteRequest']);
+        Route::patch('payments/{payment}',                    [PaymentController::class, 'update']);
+        Route::delete('payments/{payment}',                   [PaymentController::class, 'destroy']);
     });
     Route::middleware('role:admin,accounting_clerk')->group(function () {
-        Route::post('payments',             [PaymentController::class, 'store']);
-        Route::patch('payments/{payment}',  [PaymentController::class, 'update']);
-        Route::delete('payments/{payment}', [PaymentController::class, 'destroy']);
-        Route::post('payments/upload',      [PaymentController::class, 'uploadCsv']);
+        Route::post('payments',        [PaymentController::class, 'store']);
+        Route::post('payments/upload', [PaymentController::class, 'uploadCsv']);
     });
 
     /* ── Users ── */
@@ -106,7 +106,8 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /* ── Settings ── */
-    Route::get('settings', [SettingController::class, 'index']); // all users need session_timeout_minutes
+    Route::get('settings',                   [SettingController::class, 'index']);
+    Route::post('settings/verify-admin-pin', [SettingController::class, 'verifyAdminPin']);
     Route::middleware('role:admin,sysadmin')->group(function () {
         Route::patch('settings',     [SettingController::class, 'update']);
     });
