@@ -119,7 +119,7 @@ export function DirectInputTab() {
 
   useEffect(() => {
     const ordered = [...loanGroups.active, ...loanGroups.reconstruct, ...loanGroups.pastDue];
-    setEntries(ordered.map((l) => ({ loanId: l.id, amount: String(l.daily_payment), remarks: "" })));
+    setEntries(ordered.map((l) => ({ loanId: l.id, amount: "", remarks: "" })));
   }, [loanGroups]);
 
   const pagedHistory = useMemo(
@@ -341,6 +341,7 @@ export function DirectInputTab() {
                                 <div>
                                   <Input
                                     type="number" min={0} value={entry.amount}
+                                    placeholder={String(loan.daily_payment)}
                                     onChange={(e) => updateEntry(loan.id, "amount", e.target.value)}
                                     className={`h-8 text-sm ${beforeRelease || entry.error ? "border-destructive" : ""}`}
                                     disabled={saving}

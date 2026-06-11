@@ -11,6 +11,7 @@ import { DirectInputTab } from "@/components/payments/DirectInputTab";
 import { UploadExcelTab } from "@/components/payments/UploadExcelTab";
 import { CollectorSummaryTab } from "@/components/payments/CollectorSummaryTab";
 import { ClientLedgerTab } from "@/components/payments/ClientLedgerTab";
+import { CollectionSheetDialog } from "@/components/payments/CollectionSheetDialog";
 
 const VALID_TABS = ["direct", "upload", "summary", "ledger"] as const;
 type TabValue = (typeof VALID_TABS)[number];
@@ -35,6 +36,7 @@ function PaymentsPage() {
       <PageHeader
         title="Payments & Collections"
         subtitle="Record daily collections, upload Excel files, and view collector summary reports."
+        actions={(activeTab === "direct" || activeTab === "upload") ? <CollectionSheetDialog /> : undefined}
       />
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
         <TabsList>

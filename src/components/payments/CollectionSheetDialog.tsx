@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Printer, Loader2 } from "lucide-react";
+import { Loader2, Printer } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -78,6 +78,7 @@ export function CollectionSheetDialog() {
       setActing(false);
     }
   };
+
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
