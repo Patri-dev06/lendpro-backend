@@ -374,6 +374,255 @@ ${groups.map((g, i) => collectorPage(g, i === groups.length - 1, i === 0)).join(
 }
 
 
+/* ── Statement of Account ────────────────────────────────────────────── */
+
+export interface SoaPayment {
+  id: number;
+  payment_date: string;
+  amount: number | string;
+  new_balance: number | string;
+  remarks: string | null;
+}
+
+export interface SoaLoan {
+  number: string;
+  loan_type: string;
+  principal: number;
+  interest: number;
+  service_charge: number;
+  total_receivable: number;
+  daily_payment: number;
+  term_days: number;
+  current_balance: number;
+  release_date: string;
+  due_date: string;
+  status: string;
+  client: { name: string; store_name: string; address: string; phone: string };
+  collector: { name: string };
+}
+
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+export function printStatementOfAccount(
+  loan: SoaLoan,
+  payments: SoaPayment[],
+  companyName: string,
+  companyAddress: string,
+  companyPhone = "",
+  companyEmail = "",
+): void {
+  const win = window.open("", "_blank");
+  if (!win) return;
+
+  const today     = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+  const dateSlug  = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" });
+  const isOverdue = ["overdue", "past-due"].includes(loan.status);
+  const typeLabel = LOAN_TYPE_LABELS[loan.loan_type as keyof typeof LOAN_TYPE_LABELS] ?? loan.loan_type;
+
+  // Sort payments chronologically (API returns desc)
+  const sorted = [...payments].sort((a, b) =>
+    String(a.payment_date).localeCompare(String(b.payment_date))
+  );
+
+  const totalPaid  = sorted.reduce((s, p) => s + Number(p.amount), 0);
+  const endBalance = Number(loan.current_balance);
+
+  const fmtDate = (d: string) => {
+    const dt = new Date(d.slice(0, 10) + "T00:00:00");
+    return isNaN(dt.getTime()) ? d.slice(0, 10) : dt.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+  };
+
+  const paymentRows = sorted.map((p, i) => {
+    const detail = p.remarks?.trim() ? p.remarks.trim() : `${ordinal(i + 1)} payment`;
+    return `<tr>
+      <td>${fmtDate(String(p.payment_date))}</td>
+      <td class="ref">Invoice<br>Payment#:<br>${p.id}</td>
+      <td></td>
+      <td>${detail}</td>
+      <td class="num debit">${formatPHP(-Math.abs(Number(p.amount)))}</td>
+      <td class="num">${formatPHP(Number(p.new_balance))}</td>
+    </tr>`;
+  }).join("");
+
+  win.document.write(`<!DOCTYPE html><html><head>
+<title>Activity Statement — ${loan.client.name} — ${dateSlug}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:10px;color:#111;padding:28px 32px}
+  .title-bar{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:12px}
+  .title-bar .doc-title{font-size:16px;font-weight:bold}
+  .title-bar .doc-date{font-size:10px;color:#333}
+  .parties{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px}
+  .party-label{font-size:9px;font-weight:bold;text-transform:uppercase;color:#555;margin-bottom:3px}
+  .party-name{font-size:11px;font-weight:bold}
+  .party-detail{font-size:9px;color:#333;margin-top:1px}
+  .summary-section{margin-bottom:12px}
+  .summary-title{font-size:10px;font-weight:bold;margin-bottom:4px}
+  .summary-table{font-size:10px;border-collapse:collapse;width:260px}
+  .summary-table td{padding:1px 0}
+  .summary-table td:first-child{min-width:200px;color:#333}
+  .summary-table td:last-child{text-align:right;font-family:monospace;min-width:80px}
+  .summary-table .ending td{font-weight:bold;color:#000}
+  .receivables{font-size:10px;font-weight:bold;margin-bottom:10px;padding:4px 0;border-top:1px solid #ccc;border-bottom:1px solid #ccc}
+  .section-title{font-size:14px;font-weight:bold;margin:10px 0 6px}
+  table.txn{width:100%;border-collapse:collapse;font-size:9.5px}
+  table.txn th{background:#222;color:#fff;padding:5px 7px;text-align:left;font-size:9px;text-transform:uppercase}
+  table.txn th.num{text-align:right}
+  table.txn td{padding:4px 7px;border-bottom:1px solid #e8e8e8;vertical-align:top}
+  table.txn td.num{text-align:right;font-family:monospace;white-space:nowrap}
+  table.txn td.ref{font-size:8.5px;color:#555;white-space:nowrap}
+  table.txn td.debit{color:#dc2626}
+  table.txn .beg-row td{background:#f5f5f5;font-style:italic;color:#666}
+  table.txn .inv-row td{background:#eef4ff}
+  table.txn .total-row td{background:#f0f0f0;font-weight:bold;border-top:2px solid #999}
+  .disclaimer{margin-top:16px;font-size:8.5px;color:#666;border-top:1px solid #ddd;padding-top:8px;line-height:1.5}
+  @media print{body{padding:16px 18px}@page{size:A4 portrait;margin:8mm}}
+</style></head><body>
+
+<div class="title-bar">
+  <div class="doc-title">Activity Statement</div>
+  <div class="doc-date">Date Created: ${today}</div>
+</div>
+
+<div class="parties">
+  <div>
+    <div class="party-label">Issued By:</div>
+    <div class="party-name">${companyName || "BuenaMano Lending Corporation"}</div>
+    <div class="party-detail">${companyAddress || ""}</div>
+    ${companyEmail ? `<div class="party-detail">${companyEmail}</div>` : ""}
+    ${companyPhone ? `<div class="party-detail">${companyPhone}</div>` : ""}
+  </div>
+  <div>
+    <div class="party-label">Issued To:</div>
+    <div class="party-name">${loan.client.name}</div>
+    ${loan.client.store_name ? `<div class="party-detail">${loan.client.store_name}</div>` : ""}
+    ${loan.client.address   ? `<div class="party-detail">${loan.client.address}</div>` : ""}
+    ${loan.client.phone     ? `<div class="party-detail">${loan.client.phone}</div>` : ""}
+  </div>
+</div>
+
+<div class="summary-section">
+  <div class="summary-title">Account Summary Unpaid Invoices :</div>
+  <table class="summary-table">
+    <tr><td>Beginning Balance ${fmtDate(loan.release_date)}:</td><td>0.00</td></tr>
+    <tr><td>Invoiced:</td><td>${formatPHP(loan.total_receivable)}</td></tr>
+    <tr><td>Payments:</td><td>${formatPHP(-totalPaid)}</td></tr>
+    <tr><td>Credits:</td><td>0.00</td></tr>
+    <tr class="ending"><td>Ending Balance ${today}:</td><td>${formatPHP(endBalance)}</td></tr>
+    <tr><td>Overdue:</td><td>${formatPHP(isOverdue ? endBalance : 0)}</td></tr>
+    <tr><td>Current:</td><td>${formatPHP(!isOverdue && endBalance > 0 ? endBalance : 0)}</td></tr>
+  </table>
+</div>
+
+<div class="summary-section">
+  <div class="summary-title">Account Summary Unpaid Bills :</div>
+  <table class="summary-table">
+    <tr><td>Beginning Balance ${fmtDate(loan.release_date)}:</td><td>0.00</td></tr>
+    <tr><td>Invoiced:</td><td>0.00</td></tr>
+    <tr><td>Payments:</td><td>0.00</td></tr>
+    <tr><td>Credits:</td><td>0.00</td></tr>
+    <tr class="ending"><td>Ending Balance ${today}:</td><td>0.00</td></tr>
+    <tr><td>Overdue:</td><td>0.00</td></tr>
+    <tr><td>Current:</td><td>0.00</td></tr>
+  </table>
+</div>
+
+<div class="receivables">Receivables - Payables : ${formatPHP(endBalance)}</div>
+
+<div class="section-title">Unpaid Invoices</div>
+<table class="txn">
+  <thead>
+    <tr>
+      <th style="width:80px">Issue Date</th>
+      <th style="width:90px">Ref #</th>
+      <th style="width:80px">Due Date</th>
+      <th>Details</th>
+      <th class="num" style="width:90px">Amount</th>
+      <th class="num" style="width:90px">Balance</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="beg-row">
+      <td>${fmtDate(loan.release_date)}</td>
+      <td></td><td></td>
+      <td>Beginning Balance</td>
+      <td></td>
+      <td class="num">0.00</td>
+    </tr>
+    <tr class="inv-row">
+      <td>${fmtDate(loan.release_date)}</td>
+      <td class="ref">Invoice#:<br>${loan.number}</td>
+      <td>${fmtDate(loan.due_date)}</td>
+      <td>
+        ${typeLabel}
+        ${loan.service_charge > 0 ? `<br><span style="font-size:8.5px;color:#555">(Processing fee: ${formatPHP(loan.service_charge)} — collected separately)</span>` : ""}
+      </td>
+      <td class="num">${formatPHP(loan.total_receivable)}</td>
+      <td class="num">${formatPHP(loan.total_receivable)}</td>
+    </tr>
+    ${paymentRows}
+    <tr class="total-row">
+      <td colspan="5"><strong>Total Balance :</strong></td>
+      <td class="num">${formatPHP(endBalance)}</td>
+    </tr>
+  </tbody>
+</table>
+
+<br>
+<div class="section-title" style="font-size:12px">Unpaid Bills</div>
+<table class="txn">
+  <thead>
+    <tr>
+      <th style="width:80px">Issue Date</th>
+      <th style="width:90px">Ref #</th>
+      <th style="width:80px">Due Date</th>
+      <th>Details</th>
+      <th class="num" style="width:90px">Amount</th>
+      <th class="num" style="width:90px">Balance</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="beg-row">
+      <td>${fmtDate(loan.release_date)}</td>
+      <td></td><td></td>
+      <td>Beginning Balance</td>
+      <td></td>
+      <td class="num">0.00</td>
+    </tr>
+    <tr><td colspan="6" style="text-align:center;padding:8px;color:#888;font-style:italic">No Transactions</td></tr>
+    <tr class="total-row">
+      <td colspan="5"><strong>Total Balance :</strong></td>
+      <td class="num">0.00</td>
+    </tr>
+  </tbody>
+</table>
+
+<div style="margin-top:8px;font-size:10px;font-weight:bold">Total Balance Owed - Owing : ${formatPHP(endBalance)}</div>
+
+<div class="disclaimer">
+  This is just a reminder. Please disregard if full payment has been made.
+  Also, unpaid accounts will incur penalties.
+  For verification of account, you can email us, SMS us, or visit our office.
+  <br><br>
+  <strong>Loan details:</strong>
+  Loan # ${loan.number} &nbsp;|&nbsp;
+  ${typeLabel} &nbsp;|&nbsp;
+  Principal: ${formatPHP(loan.principal)} &nbsp;|&nbsp;
+  Interest: ${formatPHP(loan.interest)} &nbsp;|&nbsp;
+  Daily payment: ${formatPHP(loan.daily_payment)} &nbsp;|&nbsp;
+  Term: ${loan.term_days} days &nbsp;|&nbsp;
+  Collector: ${loan.collector.name}
+</div>
+
+</body></html>`);
+
+  win.document.close(); win.focus(); win.print();
+}
+
 /* ── Active Loan Ledger — PDF export ─────────────────────────────────── */
 
 export interface LedgerLoan {

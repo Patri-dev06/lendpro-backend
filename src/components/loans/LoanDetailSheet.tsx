@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, FileText, Loader2, RefreshCw } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,6 +17,9 @@ import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { toast } from "sonner";
 import type { ApiLoan } from "@/components/loans/LoanCreateSection";
+import { printStatementOfAccount, type SoaPayment } from "@/lib/loan-prints";
+
+interface ApiSetting { key: string; value: string | null; }
 
 interface Penalty {
   id: number;
@@ -42,8 +45,9 @@ const termLabel = (days: number) =>
 
 export function LoanDetailSheet({ loan, open, onClose, onReconstructed }: Props) {
   const { token, role } = useRole();
-  const [penalties, setPenalties] = useState<Penalty[]>([]);
-  const [loading, setLoading]     = useState(false);
+  const [penalties, setPenalties]   = useState<Penalty[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [soaPrinting, setSoaPrinting] = useState(false);
 
   // Reconstruct dialog state
   const [rcOpen, setRcOpen]               = useState(false);
@@ -79,6 +83,30 @@ export function LoanDetailSheet({ loan, open, onClose, onReconstructed }: Props)
   const canReconstruct =
     (role === "admin" || role === "manager") &&
     (loan.status === "overdue" || loan.status === "past-due");
+
+  async function handlePrintSoa() {
+    if (!loan || !token) return;
+    setSoaPrinting(true);
+    try {
+      const [paymentsData, settingsData] = await Promise.all([
+        apiRequest<SoaPayment[]>("GET", `payments?loan_id=${loan.id}`, { token }),
+        apiRequest<ApiSetting[]>("GET", "settings", { token }),
+      ]);
+      const smap = Object.fromEntries(settingsData.map((s) => [s.key, s.value ?? ""]));
+      printStatementOfAccount(
+        loan,
+        paymentsData,
+        smap.company_name    || "BuenaMano Lending Corporation",
+        smap.company_address || "",
+        smap.company_phone   || "",
+        smap.company_email   || "",
+      );
+    } catch {
+      toast.error("Failed to load data for Statement of Account.");
+    } finally {
+      setSoaPrinting(false);
+    }
+  }
 
   function openReconstruct() {
     const p = loan!.current_balance;
@@ -158,6 +186,19 @@ export function LoanDetailSheet({ loan, open, onClose, onReconstructed }: Props)
             <p className="text-sm text-muted-foreground">
               {loan.client.name} · {loan.client.store_name}
             </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-1 h-8 gap-1.5 self-start px-3 text-xs"
+              onClick={handlePrintSoa}
+              disabled={soaPrinting}
+            >
+              {soaPrinting
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <FileText className="h-3.5 w-3.5" />
+              }
+              {soaPrinting ? "Generating…" : "Print Statement of Account"}
+            </Button>
           </SheetHeader>
 
           {/* Loan summary */}
