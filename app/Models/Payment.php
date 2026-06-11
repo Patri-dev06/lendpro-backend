@@ -10,13 +10,16 @@ class Payment extends Model
     protected $fillable = [
         'loan_id', 'client_id', 'collector_id', 'recorded_by',
         'payment_date', 'amount', 'previous_balance', 'new_balance', 'remarks',
+        'delete_requested', 'delete_requested_by', 'delete_requested_at',
     ];
 
     protected $casts = [
-        'amount'           => 'float',
-        'previous_balance' => 'float',
-        'new_balance'      => 'float',
-        'payment_date'     => 'date',
+        'amount'              => 'float',
+        'previous_balance'    => 'float',
+        'new_balance'         => 'float',
+        'payment_date'        => 'date',
+        'delete_requested'    => 'boolean',
+        'delete_requested_at' => 'datetime',
     ];
 
     public function loan(): BelongsTo
@@ -37,5 +40,10 @@ class Payment extends Model
     public function recordedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'recorded_by');
+    }
+
+    public function deleteRequestedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'delete_requested_by');
     }
 }

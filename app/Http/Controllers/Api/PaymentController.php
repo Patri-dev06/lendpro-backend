@@ -16,7 +16,7 @@ class PaymentController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $payments = Payment::with(['client', 'collector', 'recordedBy', 'loan:id,release_date'])
+        $payments = Payment::with(['client', 'collector', 'recordedBy', 'loan:id,release_date', 'deleteRequestedBy:id,first_name,last_name'])
             ->when($request->loan_id, fn ($q, $id) => $q->where('loan_id', $id))
             ->when($request->client_id, fn ($q, $id) => $q->where('client_id', $id))
             ->when($request->collector_id, fn ($q, $id) => $q->where('collector_id', $id))
@@ -217,10 +217,94 @@ class PaymentController extends Controller
         return response()->json($payment->fresh(['client', 'recordedBy']));
     }
 
+    public function requestDelete(Payment $payment): JsonResponse
+    {
+        if ($payment->delete_requested) {
+            return response()->json(['message' => 'Deletion already requested.'], 422);
+        }
+
+        $payment->update([
+            'delete_requested'    => true,
+            'delete_requested_by' => auth()->id(),
+            'delete_requested_at' => now(),
+        ]);
+
+        $user = auth()->user();
+        AuditLog::record(
+            'REQUEST_DELETE_PAYMENT',
+            "Payment #{$payment->id}",
+            "User {$user->first_name} {$user->last_name} requested deletion of payment #{$payment->id} (₱{$payment->amount}) for loan ID {$payment->loan_id}"
+        );
+
+        return response()->json($payment->fresh(['client', 'deleteRequestedBy:id,first_name,last_name']));
+    }
+
+    public function cancelDeleteRequest(Payment $payment): JsonResponse
+    {
+        $user = auth()->user();
+        $isAdmin = $user->role === 'admin';
+
+        if (! $isAdmin && $payment->delete_requested_by !== $user->id) {
+            return response()->json(['message' => 'You can only cancel your own deletion requests.'], 403);
+        }
+
+        $payment->update([
+            'delete_requested'    => false,
+            'delete_requested_by' => null,
+            'delete_requested_at' => null,
+        ]);
+
+        return response()->json($payment->fresh(['client']));
+    }
+
     public function destroy(Payment $payment): JsonResponse
     {
-        $payment->delete();
-        return response()->json(['message' => 'Payment deleted.']);
+        if (auth()->user()->role !== 'admin') {
+            return response()->json(['message' => 'Only administrators can delete payments.'], 403);
+        }
+
+        DB::transaction(function () use ($payment) {
+            $loan   = Loan::with('client')->findOrFail($payment->loan_id);
+            $amount = (float) $payment->amount;
+
+            $wasPayd   = $loan->status === 'paid';
+            $newBalance = $loan->current_balance + $amount;
+
+            $loan->update([
+                'current_balance' => $newBalance,
+                'status'          => $wasPayd ? 'active' : $loan->status,
+            ]);
+
+            if ($wasPayd) {
+                $loan->client->update(['status' => 'active']);
+            }
+
+            // Reset the matching schedule row
+            $scheduleRow = ScheduleRow::where('loan_id', $loan->id)
+                ->whereDate('payment_date', $payment->payment_date)
+                ->orderBy('scheduled_date')
+                ->first();
+
+            if ($scheduleRow) {
+                $newActual = max(0, (float) $scheduleRow->actual - $amount);
+                $scheduleRow->update([
+                    'actual'        => $newActual,
+                    'payment_date'  => $newActual > 0 ? $scheduleRow->payment_date : null,
+                    'balance_after' => $newBalance,
+                    'status'        => $newActual <= 0 ? 'pending' : 'partial',
+                ]);
+            }
+
+            AuditLog::record(
+                'DELETE_PAYMENT',
+                $loan->number,
+                "Admin deleted payment #{$payment->id}: ₱{$amount} for loan {$loan->number}. Balance restored to ₱{$newBalance}."
+            );
+
+            $payment->delete();
+        });
+
+        return response()->json(['message' => 'Payment deleted and loan balance restored.']);
     }
 
     public function uploadCsv(Request $request): JsonResponse
