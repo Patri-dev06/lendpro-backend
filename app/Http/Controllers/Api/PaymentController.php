@@ -113,13 +113,16 @@ class PaymentController extends Controller
 
     public function collectorSummary(Request $request): JsonResponse
     {
-        $date        = $request->get('date', today()->toDateString());
+        // Support both single-date (?date=) and range (?from_date=&to_date=)
+        $today       = today()->toDateString();
+        $fromDate    = $request->get('from_date', $request->get('date', $today));
+        $toDate      = $request->get('to_date', $fromDate);
         $collectorId = $request->get('collector_id');
 
         $loans = Loan::with([
             'client',
-            'payments'     => fn ($q) => $q->whereDate('payment_date', $date),
-            'scheduleRows' => fn ($q) => $q->whereDate('scheduled_date', '<', $date)
+            'payments'     => fn ($q) => $q->whereBetween('payment_date', [$fromDate, $toDate]),
+            'scheduleRows' => fn ($q) => $q->whereDate('scheduled_date', '<', $fromDate)
                                            ->whereIn('status', ['pending', 'partial']),
         ])
             ->where('status', '!=', 'paid')
@@ -142,9 +145,10 @@ class PaymentController extends Controller
         });
 
         return response()->json([
-            'date'   => $date,
-            'rows'   => $rows,
-            'totals' => [
+            'from_date' => $fromDate,
+            'to_date'   => $toDate,
+            'rows'      => $rows,
+            'totals'    => [
                 'collectible' => round($rows->sum('collectible'), 2),
                 'balance'     => round($rows->sum('balance'), 2),
                 'payment'     => round($rows->sum('payment'), 2),
