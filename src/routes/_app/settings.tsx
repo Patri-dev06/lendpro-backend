@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Plus, X, Loader2, CalendarOff, ShieldCheck } from "lucide-react";
+import { Plus, X, Loader2, CalendarOff } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/finance/PageHeader";
 import { PermissionGuard } from "@/components/shared/AccessRestricted";
@@ -42,12 +42,6 @@ function SettingsPage() {
   const [newHolidayDate, setNewHolidayDate] = useState("");
   const [newHolidayName, setNewHolidayName] = useState("");
 
-  // Admin PIN
-  const [pinConfigured, setPinConfigured]   = useState(false);
-  const [newPin, setNewPin]                 = useState("");
-  const [confirmPin, setConfirmPin]         = useState("");
-  const [pinSaving, setPinSaving]           = useState(false);
-
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
 
@@ -64,7 +58,6 @@ function SettingsPage() {
       setServiceCharge(map.default_service_charge ?? "0");
       const storedTerm = parseInt(map.default_loan_term ?? "52", 10);
       setDefaultLoanTerm([30, 45, 60].includes(storedTerm) ? storedTerm : 60);
-      setPinConfigured(map.admin_pin_configured === "1");
       try {
         const parsed = JSON.parse(map.holidays ?? "[]");
         if (Array.isArray(parsed)) setHolidays(parsed.filter((h: unknown) => h && typeof h === "object").sort((a: { date: string }, b: { date: string }) => a.date.localeCompare(b.date)));
@@ -91,53 +84,6 @@ function SettingsPage() {
 
   function removeHoliday(date: string) {
     setHolidays((prev) => prev.filter((h) => h.date !== date));
-  }
-
-  async function handleSavePin() {
-    if (!token) return;
-    if (newPin.length < 4) {
-      toast.error("PIN must be at least 4 characters.");
-      return;
-    }
-    if (newPin !== confirmPin) {
-      toast.error("PINs do not match.");
-      return;
-    }
-    setPinSaving(true);
-    try {
-      await apiRequest("PATCH", "settings", {
-        token,
-        body: { settings: [{ key: "admin_pin", value: newPin }] },
-      });
-      setPinConfigured(true);
-      setNewPin("");
-      setConfirmPin("");
-      toast.success(pinConfigured ? "Admin PIN updated." : "Admin PIN set.");
-    } catch {
-      toast.error("Failed to save PIN.");
-    } finally {
-      setPinSaving(false);
-    }
-  }
-
-  async function handleRemovePin() {
-    if (!token) return;
-    if (!window.confirm("Remove the admin PIN? Override actions will no longer be available until a new PIN is set.")) return;
-    setPinSaving(true);
-    try {
-      await apiRequest("PATCH", "settings", {
-        token,
-        body: { settings: [{ key: "admin_pin", value: null }] },
-      });
-      setPinConfigured(false);
-      setNewPin("");
-      setConfirmPin("");
-      toast.success("Admin PIN removed.");
-    } catch {
-      toast.error("Failed to remove PIN.");
-    } finally {
-      setPinSaving(false);
-    }
   }
 
   async function handleSave() {
@@ -341,67 +287,6 @@ function SettingsPage() {
           </div>
         )}
       </div>
-
-      {/* Admin PIN */}
-      {role === "admin" && (
-        <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-4">
-          <div>
-            <h3 className="font-display text-base font-semibold flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-              Admin Override PIN
-            </h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              Allows any user to delete or edit payments by entering this PIN — like a supervisor override.
-            </p>
-          </div>
-
-          {pinConfigured ? (
-            <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-2.5 dark:border-emerald-800 dark:bg-emerald-950/20">
-              <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">A PIN is currently configured.</span>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2.5 dark:border-amber-800 dark:bg-amber-950/20">
-              <span className="text-sm text-amber-700 dark:text-amber-400">No PIN configured — override actions are unavailable to non-admin users.</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={pinConfigured ? "New PIN" : "Set PIN"}>
-              <Input
-                type="password"
-                value={newPin}
-                onChange={(e) => setNewPin(e.target.value)}
-                placeholder="Min 4 characters"
-              />
-            </Field>
-            <Field label="Confirm PIN">
-              <Input
-                type="password"
-                value={confirmPin}
-                onChange={(e) => setConfirmPin(e.target.value)}
-                placeholder="Re-enter PIN"
-              />
-            </Field>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={handleSavePin}
-              disabled={pinSaving || !newPin || !confirmPin}
-              className="bg-primary text-primary-foreground hover:bg-primary-glow"
-            >
-              {pinSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {pinConfigured ? "Update PIN" : "Set PIN"}
-            </Button>
-            {pinConfigured && (
-              <Button variant="outline" onClick={handleRemovePin} disabled={pinSaving} className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30">
-                Remove PIN
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
 
       {canEdit && (
         <div className="flex justify-end">

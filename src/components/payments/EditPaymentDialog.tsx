@@ -27,10 +27,9 @@ interface Props {
   payment: PaymentToEdit | null;
   onClose: () => void;
   onSaved: () => void;
-  adminPin?: string;
 }
 
-export function EditPaymentDialog({ payment, onClose, onSaved, adminPin }: Props) {
+export function EditPaymentDialog({ payment, onClose, onSaved }: Props) {
   const { token } = useRole();
   const [amount, setAmount]   = useState(0);
   const [date, setDate]       = useState("");
@@ -58,12 +57,7 @@ export function EditPaymentDialog({ payment, onClose, onSaved, adminPin }: Props
     try {
       await apiRequest("PATCH", `payments/${payment.id}`, {
         token,
-        body: {
-          amount,
-          payment_date: date,
-          remarks: remarks || null,
-          ...(adminPin ? { admin_pin: adminPin } : {}),
-        },
+        body: { amount, payment_date: date, remarks: remarks || null },
       });
       toast.success("Payment updated.");
       onSaved();
