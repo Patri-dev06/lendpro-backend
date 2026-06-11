@@ -96,7 +96,7 @@ ${content}
     win.print();
   }
 
-  const rows   = summary?.rows   ?? [];
+  const rows   = [...(summary?.rows ?? [])].sort((a, b) => a.client_name.localeCompare(b.client_name));
   const totals = summary?.totals ?? { collectible: 0, balance: 0, payment: 0 };
 
   return (

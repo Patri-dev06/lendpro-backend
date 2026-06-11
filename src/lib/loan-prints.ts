@@ -175,9 +175,15 @@ function buildGroups(loans: CollectionLoan[]): CollectorGroup[] {
     bucket(groupMap.get(cid)!);
   }
 
-  const groups = [...groupMap.values()];
-  if (noCollector.active.length || noCollector.reconstruct.length || noCollector.pastDue.length) groups.push(noCollector);
-  return groups;
+  const alpha = (arr: CollectionLoan[]) => arr.sort((a, b) => a.client.name.localeCompare(b.client.name));
+  const allGroups = [...groupMap.values()];
+  if (noCollector.active.length || noCollector.reconstruct.length || noCollector.pastDue.length) allGroups.push(noCollector);
+  return allGroups.map((g) => ({
+    ...g,
+    active:      alpha(g.active),
+    reconstruct: alpha(g.reconstruct),
+    pastDue:     alpha(g.pastDue),
+  }));
 }
 
 export function printCollectionSheet(

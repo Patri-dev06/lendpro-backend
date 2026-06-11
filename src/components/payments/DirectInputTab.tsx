@@ -97,13 +97,14 @@ export function DirectInputTab() {
     [loans, collectorId],
   );
 
-  // Grouped the same way as the printed collection sheet
+  // Grouped the same way as the printed collection sheet, sorted alphabetically within each section
   const loanGroups = useMemo(() => {
+    const alpha = (arr: ApiLoan[]) => [...arr].sort((a, b) => a.client.name.localeCompare(b.client.name));
     const isPastDue = (l: ApiLoan) => ["overdue", "past-due"].includes(l.status);
     return {
-      active:      collectorLoans.filter((l) => !isPastDue(l) && l.loan_type !== "reconstruct"),
-      reconstruct: collectorLoans.filter((l) => !isPastDue(l) && l.loan_type === "reconstruct"),
-      pastDue:     collectorLoans.filter((l) => isPastDue(l)),
+      active:      alpha(collectorLoans.filter((l) => !isPastDue(l) && l.loan_type !== "reconstruct")),
+      reconstruct: alpha(collectorLoans.filter((l) => !isPastDue(l) && l.loan_type === "reconstruct")),
+      pastDue:     alpha(collectorLoans.filter((l) => isPastDue(l))),
     };
   }, [collectorLoans]);
 
