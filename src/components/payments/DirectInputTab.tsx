@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { EditPaymentDialog, type PaymentToEdit } from "@/components/payments/EditPaymentDialog";
+import { AdminPinDialog } from "@/components/payments/AdminPinDialog";
 import { Paginator } from "@/components/shared/Paginator";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
@@ -56,10 +57,13 @@ interface EntryRow {
   done?: boolean;
 }
 
+type PinMode = { mode: "delete" | "edit"; payment: ApiPayment } | null;
+
 export function DirectInputTab() {
   const { token, role } = useRole();
-  const canSubmit = hasPermission(role, "payments:write");
-  const canEdit   = role === "admin" || role === "accounting_clerk";
+  const canSubmit      = hasPermission(role, "payments:write");
+  const isAdmin        = role === "admin";
+  const canEditDirect  = isAdmin || role === "accounting_clerk";
 
   const [loans, setLoans]           = useState<ApiLoan[]>([]);
   const [collectors, setCollectors] = useState<Collector[]>([]);
@@ -70,7 +74,10 @@ export function DirectInputTab() {
   const [date, setDate]               = useState(new Date().toISOString().slice(0, 10));
   const [entries, setEntries]         = useState<EntryRow[]>([]);
   const [saving, setSaving]           = useState(false);
+
   const [editTarget, setEditTarget]   = useState<PaymentToEdit | null>(null);
+  const [editAdminPin, setEditAdminPin] = useState<string>("");
+  const [pinMode, setPinMode]         = useState<PinMode>(null);
   const [page, setPage]               = useState(1);
 
   const loadData = useCallback(async () => {
@@ -112,13 +119,7 @@ export function DirectInputTab() {
 
   useEffect(() => {
     const ordered = [...loanGroups.active, ...loanGroups.reconstruct, ...loanGroups.pastDue];
-    setEntries(
-      ordered.map((l) => ({
-        loanId:  l.id,
-        amount:  String(l.daily_payment),
-        remarks: "",
-      })),
-    );
+    setEntries(ordered.map((l) => ({ loanId: l.id, amount: String(l.daily_payment), remarks: "" })));
   }, [loanGroups]);
 
   const pagedHistory = useMemo(
@@ -131,11 +132,10 @@ export function DirectInputTab() {
   }
 
   const toSubmit = entries.filter((e) => parseFloat(e.amount) > 0 && !e.done);
-  const isAdmin  = role === "admin";
 
-  // ── Delete / request handlers ──────────────────────────────────────────────
+  // ── Delete handlers ────────────────────────────────────────────────────────
 
-  async function handleDelete(payment: ApiPayment) {
+  async function handleAdminDelete(payment: ApiPayment) {
     if (!token) return;
     try {
       await apiRequest("DELETE", `payments/${payment.id}`, { token });
@@ -173,6 +173,34 @@ export function DirectInputTab() {
     }
   }
 
+  // ── PIN dialog handlers ────────────────────────────────────────────────────
+
+  async function handlePinConfirm(pin: string) {
+    if (!pinMode || !token) return;
+
+    if (pinMode.mode === "edit") {
+      // Verify PIN first, then open edit dialog with PIN stored
+      await apiRequest("POST", "settings/verify-admin-pin", { token, body: { pin } });
+      setEditAdminPin(pin);
+      setEditTarget(pinMode.payment as PaymentToEdit);
+      setPinMode(null);
+    } else {
+      // Delete with PIN — backend verifies it
+      const payment = pinMode.payment;
+      await apiRequest("DELETE", `payments/${payment.id}`, { token, body: { admin_pin: pin } });
+      setHistory((prev) => prev.filter((p) => p.id !== payment.id));
+      toast.success("Payment deleted and loan balance restored.");
+      setPinMode(null);
+      await loadData();
+    }
+  }
+
+  function handlePinRequestInstead() {
+    const payment = pinMode?.payment;
+    setPinMode(null);
+    if (payment) handleRequestDelete(payment);
+  }
+
   // ── Batch submit ───────────────────────────────────────────────────────────
 
   async function handleSubmitAll() {
@@ -204,7 +232,6 @@ export function DirectInputTab() {
 
     setEntries(updated);
     setSaving(false);
-
     if (successCount > 0) {
       toast.success(`${successCount} payment${successCount !== 1 ? "s" : ""} recorded successfully.`);
       await loadData();
@@ -233,62 +260,38 @@ export function DirectInputTab() {
           </p>
         </div>
 
-        {/* Controls */}
         <div className="flex flex-wrap items-end gap-3 px-5 py-4 border-b">
           <div className="space-y-1.5 min-w-48 flex-1">
             <p className="text-xs font-medium">Collector</p>
             <SearchableCombobox
-              options={collectors.map((c) => ({
-                value: String(c.id),
-                label: c.name,
-                sub: c.area || undefined,
-              }))}
+              options={collectors.map((c) => ({ value: String(c.id), label: c.name, sub: c.area || undefined }))}
               value={collectorId}
               onChange={setCollectorId}
               placeholder="Search collector…"
             />
           </div>
-
           <div className="space-y-1.5">
             <p className="text-xs font-medium">Collection date</p>
-            <Input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-44"
-            />
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-44" />
           </div>
-
           {collectorId && (
             <div className="ml-auto flex items-center gap-2 self-end">
-              <span className="text-xs text-muted-foreground">
-                {toSubmit.length} of {entries.length} will be recorded
-              </span>
+              <span className="text-xs text-muted-foreground">{toSubmit.length} of {entries.length} will be recorded</span>
               {canSubmit && (
-                <Button
-                  onClick={handleSubmitAll}
-                  disabled={saving || toSubmit.length === 0}
-                  className="bg-primary text-primary-foreground hover:bg-primary-glow"
-                >
+                <Button onClick={handleSubmitAll} disabled={saving || toSubmit.length === 0} className="bg-primary text-primary-foreground hover:bg-primary-glow">
                   {saving
                     ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Recording…</>
-                    : <><CheckCircle2 className="mr-1.5 h-4 w-4" />Record {toSubmit.length} payment{toSubmit.length !== 1 ? "s" : ""}</>
-                  }
+                    : <><CheckCircle2 className="mr-1.5 h-4 w-4" />Record {toSubmit.length} payment{toSubmit.length !== 1 ? "s" : ""}</>}
                 </Button>
               )}
             </div>
           )}
         </div>
 
-        {/* Entry table */}
         {!collectorId ? (
-          <div className="py-16 text-center text-sm text-muted-foreground">
-            Select a collector above to load their clients.
-          </div>
+          <div className="py-16 text-center text-sm text-muted-foreground">Select a collector above to load their clients.</div>
         ) : collectorLoans.length === 0 ? (
-          <div className="py-16 text-center text-sm text-muted-foreground">
-            {selectedCollector?.name} has no active loans.
-          </div>
+          <div className="py-16 text-center text-sm text-muted-foreground">{selectedCollector?.name} has no active loans.</div>
         ) : (
           <div className="overflow-x-auto">
             <Table className="min-w-175">
@@ -303,13 +306,11 @@ export function DirectInputTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(
-                  [
-                    { label: "Active", loans: loanGroups.active, color: "bg-emerald-50/70 dark:bg-emerald-950/20", textColor: "text-emerald-700 dark:text-emerald-400" },
-                    { label: "Reconstruct", loans: loanGroups.reconstruct, color: "bg-blue-50/70 dark:bg-blue-950/20", textColor: "text-blue-700 dark:text-blue-400" },
-                    { label: "Past Due / Overdue", loans: loanGroups.pastDue, color: "bg-red-50/70 dark:bg-red-950/20", textColor: "text-red-700 dark:text-red-400" },
-                  ] as const
-                ).map(({ label, loans: groupLoans, color, textColor }) => {
+                {([
+                  { label: "Active",             loans: loanGroups.active,      color: "bg-emerald-50/70 dark:bg-emerald-950/20", textColor: "text-emerald-700 dark:text-emerald-400" },
+                  { label: "Reconstruct",        loans: loanGroups.reconstruct, color: "bg-blue-50/70 dark:bg-blue-950/20",       textColor: "text-blue-700 dark:text-blue-400" },
+                  { label: "Past Due / Overdue", loans: loanGroups.pastDue,     color: "bg-red-50/70 dark:bg-red-950/20",         textColor: "text-red-700 dark:text-red-400" },
+                ] as const).map(({ label, loans: groupLoans, color, textColor }) => {
                   if (groupLoans.length === 0) return null;
                   return (
                     <React.Fragment key={label}>
@@ -325,16 +326,7 @@ export function DirectInputTab() {
                         const willSubmit = amt > 0 && !entry.done;
                         const beforeRelease = !!date && date < loan.release_date.slice(0, 10);
                         return (
-                          <TableRow
-                            key={loan.id}
-                            className={
-                              entry.done
-                                ? "bg-emerald-50/40 opacity-60 dark:bg-emerald-950/20"
-                                : !willSubmit
-                                ? "opacity-40"
-                                : ""
-                            }
-                          >
+                          <TableRow key={loan.id} className={entry.done ? "bg-emerald-50/40 opacity-60 dark:bg-emerald-950/20" : !willSubmit ? "opacity-40" : ""}>
                             <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                             <TableCell>
                               <p className="font-medium leading-tight">{loan.client.name}</p>
@@ -348,30 +340,20 @@ export function DirectInputTab() {
                               ) : (
                                 <div>
                                   <Input
-                                    type="number"
-                                    min={0}
-                                    value={entry.amount}
+                                    type="number" min={0} value={entry.amount}
                                     onChange={(e) => updateEntry(loan.id, "amount", e.target.value)}
                                     className={`h-8 text-sm ${beforeRelease || entry.error ? "border-destructive" : ""}`}
                                     disabled={saving}
                                   />
                                   {(beforeRelease || entry.error) && (
-                                    <p className="text-[10px] text-destructive mt-0.5 leading-tight">
-                                      {entry.error ?? "Before release date"}
-                                    </p>
+                                    <p className="text-[10px] text-destructive mt-0.5 leading-tight">{entry.error ?? "Before release date"}</p>
                                   )}
                                 </div>
                               )}
                             </TableCell>
                             <TableCell>
                               {!entry.done && (
-                                <Input
-                                  value={entry.remarks}
-                                  onChange={(e) => updateEntry(loan.id, "remarks", e.target.value)}
-                                  placeholder="Optional…"
-                                  className="h-8 text-sm"
-                                  disabled={saving}
-                                />
+                                <Input value={entry.remarks} onChange={(e) => updateEntry(loan.id, "remarks", e.target.value)} placeholder="Optional…" className="h-8 text-sm" disabled={saving} />
                               )}
                             </TableCell>
                           </TableRow>
@@ -429,26 +411,28 @@ export function DirectInputTab() {
                     <TableCell>
                       <div className="flex items-center gap-1 justify-end">
 
-                        {/* Edit — admin and accounting_clerk only */}
-                        {canEdit && !p.delete_requested && (
+                        {/* Edit — admin/clerk direct; others via PIN */}
+                        {!p.delete_requested && (
                           <Button variant="ghost" size="sm" className="h-7 px-2"
-                            onClick={() => setEditTarget(p as PaymentToEdit)}>
+                            title={canEditDirect ? "Edit payment" : "Edit with admin PIN"}
+                            onClick={() => canEditDirect
+                              ? setEditTarget(p as PaymentToEdit)
+                              : setPinMode({ mode: "edit", payment: p })
+                            }>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                         )}
 
-                        {/* Delete / request */}
+                        {/* Delete — admin direct; others via PIN (with request fallback) */}
                         {isAdmin ? (
                           p.delete_requested ? (
                             <>
-                              {/* Approve pending request */}
                               <Button variant="ghost" size="sm"
                                 className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
                                 title="Approve and delete"
-                                onClick={() => handleDelete(p)}>
+                                onClick={() => handleAdminDelete(p)}>
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
-                              {/* Cancel request */}
                               <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground"
                                 title="Cancel deletion request"
                                 onClick={() => handleCancelDeleteRequest(p)}>
@@ -456,28 +440,25 @@ export function DirectInputTab() {
                               </Button>
                             </>
                           ) : (
-                            /* Direct delete for admin */
                             <Button variant="ghost" size="sm"
                               className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
                               title="Delete payment"
-                              onClick={() => handleDelete(p)}>
+                              onClick={() => handleAdminDelete(p)}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           )
                         ) : (
                           p.delete_requested ? (
-                            /* Cancel own request */
                             <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground"
                               title="Cancel deletion request"
                               onClick={() => handleCancelDeleteRequest(p)}>
                               <X className="h-3.5 w-3.5" />
                             </Button>
                           ) : (
-                            /* Non-admin: request deletion */
                             <Button variant="ghost" size="sm"
                               className="h-7 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                              title="Request deletion"
-                              onClick={() => handleRequestDelete(p)}>
+                              title="Delete with admin PIN or request deletion"
+                              onClick={() => setPinMode({ mode: "delete", payment: p })}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           )
@@ -502,8 +483,21 @@ export function DirectInputTab() {
 
       <EditPaymentDialog
         payment={editTarget}
-        onClose={() => setEditTarget(null)}
+        adminPin={editAdminPin}
+        onClose={() => { setEditTarget(null); setEditAdminPin(""); }}
         onSaved={loadData}
+      />
+
+      <AdminPinDialog
+        open={!!pinMode}
+        actionDescription={
+          pinMode?.mode === "delete"
+            ? `Enter the admin PIN to immediately delete this ₱${pinMode.payment.amount.toFixed(2)} payment for ${pinMode.payment.client.name}.`
+            : `Enter the admin PIN to edit this ₱${pinMode?.payment.amount.toFixed(2)} payment for ${pinMode?.payment.client.name}.`
+        }
+        onConfirm={handlePinConfirm}
+        onRequestInstead={pinMode?.mode === "delete" ? handlePinRequestInstead : undefined}
+        onCancel={() => setPinMode(null)}
       />
     </div>
   );
