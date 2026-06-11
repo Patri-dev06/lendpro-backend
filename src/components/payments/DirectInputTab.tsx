@@ -343,7 +343,7 @@ export function DirectInputTab() {
                                     type="number" min={0} value={entry.amount}
                                     placeholder={String(loan.daily_payment)}
                                     onChange={(e) => updateEntry(loan.id, "amount", e.target.value)}
-                                    className={`h-8 text-sm ${beforeRelease || entry.error ? "border-destructive" : ""} ${!willSubmit ? "opacity-40" : ""}`}
+                                    className={`h-8 text-sm ${beforeRelease || entry.error ? "border-destructive" : ""}`}
                                     disabled={saving}
                                   />
                                   {(beforeRelease || entry.error) && (
