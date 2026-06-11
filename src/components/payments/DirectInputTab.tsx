@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Loader2, Pencil } from "lucide-react";
+import { CheckCircle2, Loader2, Pencil, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -37,6 +37,9 @@ interface ApiPayment {
   remarks: string | null;
   client: { name: string };
   loan: { release_date: string } | null;
+  delete_requested: boolean;
+  delete_requested_by?: { first_name: string; last_name: string } | null;
+  delete_requested_at: string | null;
 }
 
 interface Collector {
@@ -130,6 +133,44 @@ export function DirectInputTab() {
   }
 
   const toSubmit = entries.filter((e) => parseFloat(e.amount) > 0 && !e.done);
+
+  const isAdmin = role === "admin";
+
+  async function handleRequestDelete(payment: ApiPayment) {
+    if (!token) return;
+    if (!window.confirm(`Request deletion of ₱${payment.amount.toFixed(2)} payment for ${payment.client.name}?\nAn administrator will need to approve it.`)) return;
+    try {
+      const updated = await apiRequest<ApiPayment>("POST", `payments/${payment.id}/request-delete`, { token });
+      setHistory((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+      toast.success("Deletion request submitted. Awaiting admin approval.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to request deletion.");
+    }
+  }
+
+  async function handleCancelDeleteRequest(payment: ApiPayment) {
+    if (!token) return;
+    try {
+      const updated = await apiRequest<ApiPayment>("DELETE", `payments/${payment.id}/request-delete`, { token });
+      setHistory((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+      toast.success("Deletion request cancelled.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to cancel request.");
+    }
+  }
+
+  async function handleApproveDelete(payment: ApiPayment) {
+    if (!token) return;
+    if (!window.confirm(`Permanently delete this ₱${payment.amount.toFixed(2)} payment for ${payment.client.name}?\nThe loan balance will be restored.`)) return;
+    try {
+      await apiRequest("DELETE", `payments/${payment.id}`, { token });
+      setHistory((prev) => prev.filter((p) => p.id !== payment.id));
+      toast.success("Payment deleted and loan balance restored.");
+      await loadData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete payment.");
+    }
+  }
 
   async function handleSubmitAll() {
     if (!token || toSubmit.length === 0) return;
@@ -359,36 +400,81 @@ export function DirectInputTab() {
                 <TableHead className="text-right">Previous</TableHead>
                 <TableHead className="text-right">New balance</TableHead>
                 <TableHead>Remarks</TableHead>
-                {canEdit && <TableHead />}
+                <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {history.length === 0 ? (
-                <tr><td colSpan={canEdit ? 7 : 6} className="py-10 text-center text-sm text-muted-foreground">No payments recorded yet.</td></tr>
+                <tr><td colSpan={7} className="py-10 text-center text-sm text-muted-foreground">No payments recorded yet.</td></tr>
               ) : (<>
                 {pagedHistory.map((p) => (
-                  <TableRow key={p.id}>
+                  <TableRow key={p.id} className={p.delete_requested ? "bg-amber-50/70 dark:bg-amber-950/20" : ""}>
                     <TableCell>{formatDate(p.payment_date)}</TableCell>
-                    <TableCell className="font-medium">{p.client.name}</TableCell>
+                    <TableCell>
+                      <p className="font-medium leading-tight">{p.client.name}</p>
+                      {p.delete_requested && (
+                        <p className="text-[10px] text-amber-600 font-medium mt-0.5">
+                          ⚠ Deletion requested{p.delete_requested_by ? ` by ${p.delete_requested_by.first_name} ${p.delete_requested_by.last_name}` : ""}
+                        </p>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right num font-medium">{formatPHP(p.amount)}</TableCell>
                     <TableCell className="text-right num text-muted-foreground">{formatPHP(p.previous_balance)}</TableCell>
                     <TableCell className="text-right num">{formatPHP(p.new_balance)}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{p.remarks ?? "—"}</TableCell>
-                    {canEdit && (
-                      <TableCell>
-                        <Button variant="ghost" size="sm" className="h-7 px-2"
-                          onClick={() => setEditTarget(p as PaymentToEdit)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                      </TableCell>
-                    )}
+                    <TableCell>
+                      <div className="flex items-center gap-1 justify-end">
+                        {canEdit && !p.delete_requested && (
+                          <Button variant="ghost" size="sm" className="h-7 px-2"
+                            onClick={() => setEditTarget(p as PaymentToEdit)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {isAdmin ? (
+                          p.delete_requested ? (
+                            <>
+                              <Button variant="ghost" size="sm"
+                                className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => handleApproveDelete(p)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground"
+                                onClick={() => handleCancelDeleteRequest(p)}>
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          ) : (
+                            <Button variant="ghost" size="sm"
+                              className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleApproveDelete(p)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )
+                        ) : (
+                          p.delete_requested ? (
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground"
+                              title="Cancel your deletion request"
+                              onClick={() => handleCancelDeleteRequest(p)}>
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : (
+                            <Button variant="ghost" size="sm"
+                              className="h-7 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                              title="Request deletion"
+                              onClick={() => handleRequestDelete(p)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )
+                        )}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
                 <TableRow className="border-t-2 bg-muted/40">
                   <TableCell className="py-3 text-xs font-semibold text-muted-foreground">Total</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{history.length} transactions</TableCell>
                   <TableCell className="text-right num font-bold">{formatPHP(history.reduce((s, p) => s + p.amount, 0))}</TableCell>
-                  <TableCell colSpan={canEdit ? 4 : 3} />
+                  <TableCell colSpan={4} />
                 </TableRow>
               </>)}
             </TableBody>
