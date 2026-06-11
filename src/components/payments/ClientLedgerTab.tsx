@@ -3,7 +3,7 @@ import { BookOpen, Loader2, Printer } from "lucide-react";
 import { printLedger, type PrintScheduleRow } from "@/lib/loan-prints";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InfoItem } from "@/components/payments/InfoItem";
 import { apiRequest } from "@/lib/api";
@@ -132,16 +132,17 @@ export function ClientLedgerTab() {
               <Loader2 className="h-4 w-4 animate-spin" />Loading…
             </div>
           ) : (
-            <Select value={String(selectedLoanId ?? "")} onValueChange={(v) => setSelectedLoanId(Number(v))}>
-              <SelectTrigger className="h-9 w-72"><SelectValue placeholder="Select a loan…" /></SelectTrigger>
-              <SelectContent>
-                {loans.map((l) => (
-                  <SelectItem key={l.id} value={String(l.id)}>
-                    {l.client.name} — {l.number}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableCombobox
+              className="w-72"
+              options={loans.map((l) => ({
+                value: String(l.id),
+                label: l.client.name,
+                sub: l.number,
+              }))}
+              value={String(selectedLoanId ?? "")}
+              onChange={(v) => setSelectedLoanId(Number(v))}
+              placeholder="Search client or loan #…"
+            />
           )}
         </div>
         <Button variant="outline" className="ml-auto" onClick={handlePrint} disabled={!ledger || loadingLedger}>

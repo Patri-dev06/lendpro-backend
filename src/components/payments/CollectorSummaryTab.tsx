@@ -3,7 +3,7 @@ import { Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
@@ -21,7 +21,8 @@ interface SummaryRow {
 }
 
 interface SummaryResponse {
-  date: string;
+  from_date: string;
+  to_date: string;
   rows: SummaryRow[];
   totals: { collectible: number; balance: number; payment: number };
 }
@@ -33,7 +34,8 @@ export function CollectorSummaryTab() {
   const today = new Date().toISOString().slice(0, 10);
 
   const [collectors, setCollectors]           = useState<ApiCollector[]>([]);
-  const [date, setDate]                       = useState(today);
+  const [fromDate, setFromDate]               = useState(today);
+  const [toDate, setToDate]                   = useState(today);
   const [collectorFilter, setCollectorFilter] = useState("all");
   const [summary, setSummary]                 = useState<SummaryResponse | null>(null);
   const [loading, setLoading]                 = useState(false);
@@ -51,7 +53,7 @@ export function CollectorSummaryTab() {
     if (!token) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ date });
+      const params = new URLSearchParams({ from_date: fromDate, to_date: toDate });
       if (collectorFilter !== "all") params.set("collector_id", collectorFilter);
       const data = await apiRequest<SummaryResponse>(
         "GET", `payments/collector-summary?${params}`, { token }
@@ -62,10 +64,12 @@ export function CollectorSummaryTab() {
     } finally {
       setLoading(false);
     }
-  }, [token, date, collectorFilter]);
+  }, [token, fromDate, toDate, collectorFilter]);
 
   useEffect(() => { fetchCollectors(); }, [fetchCollectors]);
   useEffect(() => { fetchSummary(); }, [fetchSummary]);
+
+  const dateLabel = fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`;
 
   function handlePrint() {
     const content = printRef.current?.innerHTML;
@@ -75,7 +79,7 @@ export function CollectorSummaryTab() {
       : collectors.find((c) => String(c.id) === collectorFilter)?.name ?? "";
     const win = window.open("", "_blank");
     if (!win) return;
-    win.document.write(`<html><head><title>Collection Summary — ${date}</title>
+    win.document.write(`<html><head><title>Collection Summary — ${dateLabel}</title>
 <style>
   body{font-family:Arial,sans-serif;font-size:12px;padding:32px;color:#111}
   h2{font-size:18px;margin:0 0 4px}.meta{font-size:11px;color:#666;margin-bottom:20px}
@@ -85,7 +89,7 @@ export function CollectorSummaryTab() {
   .total td{font-weight:700;background:#f8f8f8;border-top:2px solid #aaa}
 </style></head><body>
 <h2>Collection Summary</h2>
-<div class="meta">Date: ${date} &nbsp;·&nbsp; ${collectorName}</div>
+<div class="meta">Date: ${dateLabel} &nbsp;·&nbsp; ${collectorName}</div>
 ${content}
 </body></html>`);
     win.document.close();
@@ -99,22 +103,27 @@ ${content}
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">
-          <Label className="text-xs">Date</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 w-44" />
+          <Label className="text-xs">From</Label>
+          <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-9 w-44" />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs">Collector</Label>
-          <Select value={collectorFilter} onValueChange={setCollectorFilter}>
-            <SelectTrigger className="h-9 w-48"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Collectors</SelectItem>
-              {collectors.map((c) => (
-                <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label className="text-xs">To</Label>
+          <Input type="date" value={toDate} min={fromDate} onChange={(e) => setToDate(e.target.value)} className="h-9 w-44" />
         </div>
-        <Button variant="outline" className="ml-auto" onClick={handlePrint} disabled={loading || rows.length === 0}>
+        <div className="space-y-1.5 min-w-48">
+          <Label className="text-xs">Collector</Label>
+          <SearchableCombobox
+            className="h-9 w-52"
+            options={[
+              { value: "all", label: "All Collectors" },
+              ...collectors.map((c) => ({ value: String(c.id), label: c.name })),
+            ]}
+            value={collectorFilter}
+            onChange={setCollectorFilter}
+            placeholder="Search collector…"
+          />
+        </div>
+        <Button variant="outline" className="ml-auto self-end" onClick={handlePrint} disabled={loading || rows.length === 0}>
           <Printer className="mr-2 h-4 w-4" />Print Summary
         </Button>
       </div>
@@ -122,7 +131,9 @@ ${content}
       <div className="rounded-2xl border bg-card shadow-sm">
         <div className="border-b px-5 py-4">
           <h3 className="font-display text-base font-semibold">Collection Summary</h3>
-          <p className="text-xs text-muted-foreground">Daily collection report — {date}</p>
+          <p className="text-xs text-muted-foreground">
+            {fromDate === toDate ? `Report for ${fromDate}` : `${fromDate} — ${toDate}`}
+          </p>
         </div>
 
         <div ref={printRef} className="overflow-x-auto">
