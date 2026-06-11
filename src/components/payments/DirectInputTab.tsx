@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ const PAGE_SIZE = 20;
 interface ApiLoan {
   id: number;
   number: string;
+  loan_type: string;
   daily_payment: number;
   current_balance: number;
   release_date: string;
@@ -96,16 +97,27 @@ export function DirectInputTab() {
     [loans, collectorId],
   );
 
-  // Rebuild entry rows whenever collector changes
+  // Grouped the same way as the printed collection sheet
+  const loanGroups = useMemo(() => {
+    const isPastDue = (l: ApiLoan) => ["overdue", "past-due"].includes(l.status);
+    return {
+      active:      collectorLoans.filter((l) => !isPastDue(l) && l.loan_type !== "reconstruct"),
+      reconstruct: collectorLoans.filter((l) => !isPastDue(l) && l.loan_type === "reconstruct"),
+      pastDue:     collectorLoans.filter((l) => isPastDue(l)),
+    };
+  }, [collectorLoans]);
+
+  // Rebuild entry rows in grouped order whenever collector changes
   useEffect(() => {
+    const ordered = [...loanGroups.active, ...loanGroups.reconstruct, ...loanGroups.pastDue];
     setEntries(
-      collectorLoans.map((l) => ({
+      ordered.map((l) => ({
         loanId:  l.id,
         amount:  String(l.daily_payment),
         remarks: "",
       })),
     );
-  }, [collectorLoans]);
+  }, [loanGroups]);
 
   const pagedHistory = useMemo(
     () => history.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
@@ -235,75 +247,93 @@ export function DirectInputTab() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table className="min-w-180">
+            <Table className="min-w-175">
               <TableHeader>
                 <TableRow className="text-xs">
-                  <TableHead className="w-8">#</TableHead>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Store</TableHead>
+                  <TableHead className="w-8">No.</TableHead>
+                  <TableHead>Client / Business</TableHead>
+                  <TableHead className="text-right">Daily Collection</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
-                  <TableHead className="text-right">Daily Due</TableHead>
                   <TableHead className="w-36">Amount Paid (₱)</TableHead>
                   <TableHead className="w-44">Remarks</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {collectorLoans.map((loan, i) => {
-                  const entry = entries.find((e) => e.loanId === loan.id);
-                  if (!entry) return null;
-                  const amt = parseFloat(entry.amount);
-                  const willSubmit = amt > 0 && !entry.done;
-                  const beforeRelease = !!date && date < loan.release_date.slice(0, 10);
-
+                {(
+                  [
+                    { label: "Active", loans: loanGroups.active, color: "bg-emerald-50/70 dark:bg-emerald-950/20", textColor: "text-emerald-700 dark:text-emerald-400" },
+                    { label: "Reconstruct", loans: loanGroups.reconstruct, color: "bg-blue-50/70 dark:bg-blue-950/20", textColor: "text-blue-700 dark:text-blue-400" },
+                    { label: "Past Due / Overdue", loans: loanGroups.pastDue, color: "bg-red-50/70 dark:bg-red-950/20", textColor: "text-red-700 dark:text-red-400" },
+                  ] as const
+                ).map(({ label, loans: groupLoans, color, textColor }) => {
+                  if (groupLoans.length === 0) return null;
                   return (
-                    <TableRow
-                      key={loan.id}
-                      className={
-                        entry.done
-                          ? "bg-emerald-50/60 opacity-60 dark:bg-emerald-950/20"
-                          : !willSubmit
-                          ? "opacity-50"
-                          : ""
-                      }
-                    >
-                      <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
-                      <TableCell className="font-medium">{loan.client.name}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{loan.client.store_name}</TableCell>
-                      <TableCell className="text-right num text-sm">{formatPHP(loan.current_balance)}</TableCell>
-                      <TableCell className="text-right num text-sm text-muted-foreground">{formatPHP(loan.daily_payment)}</TableCell>
-                      <TableCell>
-                        {entry.done ? (
-                          <span className="text-xs font-medium text-emerald-600">✓ {formatPHP(0)}</span>
-                        ) : (
-                          <div>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={entry.amount}
-                              onChange={(e) => updateEntry(loan.id, "amount", e.target.value)}
-                              className={`h-8 text-sm ${beforeRelease || entry.error ? "border-destructive" : ""}`}
-                              disabled={saving}
-                            />
-                            {(beforeRelease || entry.error) && (
-                              <p className="text-[10px] text-destructive mt-0.5 leading-tight">
-                                {entry.error ?? `Before release date`}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {!entry.done && (
-                          <Input
-                            value={entry.remarks}
-                            onChange={(e) => updateEntry(loan.id, "remarks", e.target.value)}
-                            placeholder="Optional…"
-                            className="h-8 text-sm"
-                            disabled={saving}
-                          />
-                        )}
-                      </TableCell>
-                    </TableRow>
+                    <React.Fragment key={label}>
+                      <TableRow className={color}>
+                        <TableCell colSpan={6} className={`py-1.5 px-5 text-xs font-semibold uppercase tracking-wider ${textColor}`}>
+                          {label} ({groupLoans.length})
+                        </TableCell>
+                      </TableRow>
+                      {groupLoans.map((loan, i) => {
+                        const entry = entries.find((e) => e.loanId === loan.id);
+                        if (!entry) return null;
+                        const amt = parseFloat(entry.amount);
+                        const willSubmit = amt > 0 && !entry.done;
+                        const beforeRelease = !!date && date < loan.release_date.slice(0, 10);
+                        return (
+                          <TableRow
+                            key={loan.id}
+                            className={
+                              entry.done
+                                ? "bg-emerald-50/40 opacity-60 dark:bg-emerald-950/20"
+                                : !willSubmit
+                                ? "opacity-40"
+                                : ""
+                            }
+                          >
+                            <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
+                            <TableCell>
+                              <p className="font-medium leading-tight">{loan.client.name}</p>
+                              <p className="text-xs text-muted-foreground">{loan.client.store_name}</p>
+                            </TableCell>
+                            <TableCell className="text-right num text-sm text-muted-foreground">{formatPHP(loan.daily_payment)}</TableCell>
+                            <TableCell className="text-right num text-sm">{formatPHP(loan.current_balance)}</TableCell>
+                            <TableCell>
+                              {entry.done ? (
+                                <span className="text-xs font-medium text-emerald-600">✓ Recorded</span>
+                              ) : (
+                                <div>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={entry.amount}
+                                    onChange={(e) => updateEntry(loan.id, "amount", e.target.value)}
+                                    className={`h-8 text-sm ${beforeRelease || entry.error ? "border-destructive" : ""}`}
+                                    disabled={saving}
+                                  />
+                                  {(beforeRelease || entry.error) && (
+                                    <p className="text-[10px] text-destructive mt-0.5 leading-tight">
+                                      {entry.error ?? "Before release date"}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {!entry.done && (
+                                <Input
+                                  value={entry.remarks}
+                                  onChange={(e) => updateEntry(loan.id, "remarks", e.target.value)}
+                                  placeholder="Optional…"
+                                  className="h-8 text-sm"
+                                  disabled={saving}
+                                />
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </React.Fragment>
                   );
                 })}
               </TableBody>
