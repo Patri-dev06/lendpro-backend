@@ -326,7 +326,7 @@ export function DirectInputTab() {
                         const willSubmit = amt > 0 && !entry.done;
                         const beforeRelease = !!date && date < loan.release_date.slice(0, 10);
                         return (
-                          <TableRow key={loan.id} className={entry.done ? "bg-emerald-50/40 opacity-60 dark:bg-emerald-950/20" : !willSubmit ? "opacity-40" : ""}>
+                          <TableRow key={loan.id} className={entry.done ? "bg-emerald-50/40 opacity-60 dark:bg-emerald-950/20" : ""}>
                             <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                             <TableCell>
                               <p className="font-medium leading-tight">{loan.client.name}</p>
@@ -343,7 +343,7 @@ export function DirectInputTab() {
                                     type="number" min={0} value={entry.amount}
                                     placeholder={String(loan.daily_payment)}
                                     onChange={(e) => updateEntry(loan.id, "amount", e.target.value)}
-                                    className={`h-8 text-sm ${beforeRelease || entry.error ? "border-destructive" : ""}`}
+                                    className={`h-8 text-sm ${beforeRelease || entry.error ? "border-destructive" : ""} ${!willSubmit ? "opacity-40" : ""}`}
                                     disabled={saving}
                                   />
                                   {(beforeRelease || entry.error) && (
