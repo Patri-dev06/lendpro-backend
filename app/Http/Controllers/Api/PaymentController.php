@@ -345,16 +345,21 @@ class PaymentController extends Controller
             $rowNum++;
             $row = array_map('trim', $row);
 
-            if (count($row) < 3) {
-                $errors[] = "Row {$rowNum}: expected at least 3 columns (loan_number, payment_date, amount).";
+            // Format: loan_number, payment_date, client_name, daily_payment, amount_paid, remarks
+            if (count($row) < 5) {
+                $errors[] = "Row {$rowNum}: expected columns — loan_number, payment_date, client_name, daily_payment, amount_paid, remarks.";
                 continue;
             }
 
-            [$loanNumber, $paymentDate, $rawAmount] = $row;
-            $remarks = $row[3] ?? null;
+            $loanNumber  = $row[0];
+            $paymentDate = $row[1];
+            // col[2] = client_name (reference, ignored)
+            // col[3] = daily_payment (reference, ignored)
+            $rawAmount   = $row[4];
+            $remarks     = $row[5] ?? null;
 
-            if (! $loanNumber || ! $paymentDate || ! is_numeric($rawAmount)) {
-                $errors[] = "Row {$rowNum}: invalid data.";
+            if (! $loanNumber || ! $paymentDate || ! is_numeric($rawAmount) || (float) $rawAmount <= 0) {
+                $errors[] = "Row {$rowNum}: invalid data — amount_paid must be a number greater than 0.";
                 continue;
             }
 
