@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Loader2, Pencil, Trash2, X } from "lucide-react";
+import { CheckCircle2, Loader2, Pencil, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -74,6 +74,7 @@ export function DirectInputTab() {
   const [date, setDate]               = useState(new Date().toISOString().slice(0, 10));
   const [entries, setEntries]         = useState<EntryRow[]>([]);
   const [saving, setSaving]           = useState(false);
+  const [clientSearch, setClientSearch] = useState("");
 
   const [editTarget, setEditTarget]   = useState<PaymentToEdit | null>(null);
   const [editAdminPin, setEditAdminPin] = useState<string>("");
@@ -266,7 +267,7 @@ export function DirectInputTab() {
             <SearchableCombobox
               options={collectors.map((c) => ({ value: String(c.id), label: c.name, sub: c.area || undefined }))}
               value={collectorId}
-              onChange={setCollectorId}
+              onChange={(v) => { setCollectorId(v); setClientSearch(""); }}
               placeholder="Search collector…"
             />
           </div>
@@ -293,6 +294,18 @@ export function DirectInputTab() {
         ) : collectorLoans.length === 0 ? (
           <div className="py-16 text-center text-sm text-muted-foreground">{selectedCollector?.name} has no active loans.</div>
         ) : (
+          <>
+            <div className="px-5 py-3 border-b">
+              <div className="relative max-w-xs">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="h-8 pl-8 text-sm"
+                  placeholder="Search client name or store…"
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
+                />
+              </div>
+            </div>
           <div className="overflow-x-auto">
             <Table className="min-w-175">
               <TableHeader>
@@ -310,7 +323,13 @@ export function DirectInputTab() {
                   { label: "Active",             loans: loanGroups.active,      color: "bg-emerald-50/70 dark:bg-emerald-950/20", textColor: "text-emerald-700 dark:text-emerald-400" },
                   { label: "Reconstruct",        loans: loanGroups.reconstruct, color: "bg-blue-50/70 dark:bg-blue-950/20",       textColor: "text-blue-700 dark:text-blue-400" },
                   { label: "Past Due / Overdue", loans: loanGroups.pastDue,     color: "bg-red-50/70 dark:bg-red-950/20",         textColor: "text-red-700 dark:text-red-400" },
-                ] as const).map(({ label, loans: groupLoans, color, textColor }) => {
+                ] as const).map(({ label, loans: rawGroup, color, textColor }) => {
+                  const groupLoans = clientSearch.trim()
+                    ? rawGroup.filter((l) => {
+                        const q = clientSearch.toLowerCase();
+                        return l.client.name.toLowerCase().includes(q) || l.client.store_name.toLowerCase().includes(q);
+                      })
+                    : rawGroup;
                   if (groupLoans.length === 0) return null;
                   return (
                     <React.Fragment key={label}>
@@ -366,6 +385,7 @@ export function DirectInputTab() {
               </TableBody>
             </Table>
           </div>
+          </>
         )}
       </div>
 
