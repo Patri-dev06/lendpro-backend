@@ -84,6 +84,10 @@ export function DirectInputTab() {
   const [pinMode, setPinMode]         = useState<PinMode>(null);
   const [page, setPage]               = useState(1);
 
+  const [inputMode, setInputMode]       = useState<"collector" | "client">("collector");
+  const [clientModeSearch, setClientModeSearch] = useState("");
+  const [clientModeRows, setClientModeRows] = useState<Record<number, { amount: string; remarks: string; saving: boolean; done: boolean; error?: string }>>({});
+
   const loadData = useCallback(async () => {
     if (!token) return;
     try {
@@ -125,6 +129,14 @@ export function DirectInputTab() {
     const ordered = [...loanGroups.active, ...loanGroups.reconstruct, ...loanGroups.pastDue];
     setEntries(ordered.map((l) => ({ loanId: l.id, amount: "", remarks: "" })));
   }, [loanGroups]);
+
+  const clientModeLoans = useMemo(() => {
+    const q = clientModeSearch.trim().toLowerCase();
+    if (!q) return [];
+    return loans.filter((l) =>
+      l.client.name.toLowerCase().includes(q) || l.client.store_name.toLowerCase().includes(q)
+    );
+  }, [loans, clientModeSearch]);
 
   useEffect(() => { setPage(1); }, [historySearch]);
 
@@ -258,6 +270,48 @@ export function DirectInputTab() {
     }
   }
 
+  // ── Client-mode helpers ────────────────────────────────────────────────────
+
+  function getClientRow(loanId: number) {
+    return clientModeRows[loanId] ?? { amount: "", remarks: "", saving: false, done: false };
+  }
+
+  function updateClientRow(loanId: number, field: "amount" | "remarks", value: string) {
+    setClientModeRows((prev) => ({
+      ...prev,
+      [loanId]: { ...getClientRow(loanId), [field]: value, error: undefined },
+    }));
+  }
+
+  async function handleClientModeRecord(loan: ApiLoan) {
+    if (!token) return;
+    const row = getClientRow(loan.id);
+    const amt = parseFloat(row.amount);
+    if (!amt || amt <= 0) return;
+    if (date < loan.release_date.slice(0, 10)) {
+      setClientModeRows((prev) => ({
+        ...prev,
+        [loan.id]: { ...row, error: `Before release date (${loan.release_date.slice(0, 10)})` },
+      }));
+      return;
+    }
+    setClientModeRows((prev) => ({ ...prev, [loan.id]: { ...row, saving: true, error: undefined } }));
+    try {
+      await apiRequest("POST", "payments", {
+        token,
+        body: { loan_id: loan.id, payment_date: date, amount: amt, remarks: row.remarks || null },
+      });
+      setClientModeRows((prev) => ({ ...prev, [loan.id]: { amount: "", remarks: "", saving: false, done: true } }));
+      toast.success(`Payment recorded for ${loan.client.name}.`);
+      await loadData();
+    } catch (err) {
+      setClientModeRows((prev) => ({
+        ...prev,
+        [loan.id]: { ...row, saving: false, error: err instanceof Error ? err.message : "Failed" },
+      }));
+    }
+  }
+
   if (loadingInit) {
     return (
       <div className="flex h-48 items-center justify-center">
@@ -276,134 +330,249 @@ export function DirectInputTab() {
         <div className="border-b px-5 py-4">
           <h3 className="font-display text-base font-semibold">Batch payment entry</h3>
           <p className="text-xs text-muted-foreground">
-            Select a collector — all their active loans appear below. Set amount to 0 or clear to skip.
+            {inputMode === "collector"
+              ? "Select a collector — all their active loans appear below. Set amount to 0 or clear to skip."
+              : "Search a client by name to find their loan and record a payment individually."}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-end gap-3 px-5 py-4 border-b">
-          <div className="space-y-1.5 min-w-48 flex-1">
-            <p className="text-xs font-medium">Collector</p>
-            <SearchableCombobox
-              options={collectors.map((c) => ({ value: String(c.id), label: c.name, sub: c.area || undefined }))}
-              value={collectorId}
-              onChange={(v) => { setCollectorId(v); setClientSearch(""); }}
-              placeholder="Search collector…"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium">Collection date</p>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-44" />
-          </div>
-          {collectorId && (
-            <div className="ml-auto flex items-center gap-2 self-end">
-              <span className="text-xs text-muted-foreground">{toSubmit.length} of {entries.length} will be recorded</span>
-              {canSubmit && (
-                <Button onClick={handleSubmitAll} disabled={saving || toSubmit.length === 0} className="bg-primary text-primary-foreground hover:bg-primary-glow">
-                  {saving
-                    ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Recording…</>
-                    : <><CheckCircle2 className="mr-1.5 h-4 w-4" />Record {toSubmit.length} payment{toSubmit.length !== 1 ? "s" : ""}</>}
-                </Button>
-              )}
-            </div>
-          )}
+        {/* Mode toggle */}
+        <div className="flex gap-1.5 border-b px-5 py-3">
+          <Button size="sm" variant={inputMode === "collector" ? "default" : "outline"} onClick={() => setInputMode("collector")}>
+            By Collector
+          </Button>
+          <Button size="sm" variant={inputMode === "client" ? "default" : "outline"} onClick={() => setInputMode("client")}>
+            By Client
+          </Button>
         </div>
 
-        {!collectorId ? (
-          <div className="py-16 text-center text-sm text-muted-foreground">Select a collector above to load their clients.</div>
-        ) : collectorLoans.length === 0 ? (
-          <div className="py-16 text-center text-sm text-muted-foreground">{selectedCollector?.name} has no active loans.</div>
-        ) : (
+        {inputMode === "collector" ? (
           <>
-            <div className="px-5 py-3 border-b">
-              <div className="relative max-w-xs">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className="h-8 pl-8 text-sm"
-                  placeholder="Search client name or store…"
-                  value={clientSearch}
-                  onChange={(e) => setClientSearch(e.target.value)}
+            <div className="flex flex-wrap items-end gap-3 px-5 py-4 border-b">
+              <div className="space-y-1.5 min-w-48 flex-1">
+                <p className="text-xs font-medium">Collector</p>
+                <SearchableCombobox
+                  options={collectors.map((c) => ({ value: String(c.id), label: c.name, sub: c.area || undefined }))}
+                  value={collectorId}
+                  onChange={(v) => { setCollectorId(v); setClientSearch(""); }}
+                  placeholder="Search collector…"
                 />
               </div>
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium">Collection date</p>
+                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-44" />
+              </div>
+              {collectorId && (
+                <div className="ml-auto flex items-center gap-2 self-end">
+                  <span className="text-xs text-muted-foreground">{toSubmit.length} of {entries.length} will be recorded</span>
+                  {canSubmit && (
+                    <Button onClick={handleSubmitAll} disabled={saving || toSubmit.length === 0} className="bg-primary text-primary-foreground hover:bg-primary-glow">
+                      {saving
+                        ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Recording…</>
+                        : <><CheckCircle2 className="mr-1.5 h-4 w-4" />Record {toSubmit.length} payment{toSubmit.length !== 1 ? "s" : ""}</>}
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
-          <div className="overflow-x-auto">
-            <Table className="min-w-175">
-              <TableHeader>
-                <TableRow className="text-xs">
-                  <TableHead className="w-8">No.</TableHead>
-                  <TableHead>Client / Business</TableHead>
-                  <TableHead className="text-right">Daily Collection</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
-                  <TableHead className="w-36">Amount Paid (₱)</TableHead>
-                  <TableHead className="w-44">Remarks</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {([
-                  { label: "Active",             loans: loanGroups.active,      color: "bg-emerald-50/70 dark:bg-emerald-950/20", textColor: "text-emerald-700 dark:text-emerald-400" },
-                  { label: "Reconstruct",        loans: loanGroups.reconstruct, color: "bg-blue-50/70 dark:bg-blue-950/20",       textColor: "text-blue-700 dark:text-blue-400" },
-                  { label: "Past Due / Overdue", loans: loanGroups.pastDue,     color: "bg-red-50/70 dark:bg-red-950/20",         textColor: "text-red-700 dark:text-red-400" },
-                ] as const).map(({ label, loans: rawGroup, color, textColor }) => {
-                  const groupLoans = clientSearch.trim()
-                    ? rawGroup.filter((l) => {
-                        const q = clientSearch.toLowerCase();
-                        return l.client.name.toLowerCase().includes(q) || l.client.store_name.toLowerCase().includes(q);
-                      })
-                    : rawGroup;
-                  if (groupLoans.length === 0) return null;
-                  return (
-                    <React.Fragment key={label}>
-                      <TableRow className={color}>
-                        <TableCell colSpan={6} className={`py-1.5 px-5 text-xs font-semibold uppercase tracking-wider ${textColor}`}>
-                          {label} ({groupLoans.length})
-                        </TableCell>
+
+            {!collectorId ? (
+              <div className="py-16 text-center text-sm text-muted-foreground">Select a collector above to load their clients.</div>
+            ) : collectorLoans.length === 0 ? (
+              <div className="py-16 text-center text-sm text-muted-foreground">{selectedCollector?.name} has no active loans.</div>
+            ) : (
+              <>
+                <div className="px-5 py-3 border-b">
+                  <div className="relative max-w-xs">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="h-8 pl-8 text-sm"
+                      placeholder="Search client name or store…"
+                      value={clientSearch}
+                      onChange={(e) => setClientSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <Table className="min-w-175">
+                    <TableHeader>
+                      <TableRow className="text-xs">
+                        <TableHead className="w-8">No.</TableHead>
+                        <TableHead>Client / Business</TableHead>
+                        <TableHead className="text-right">Daily Collection</TableHead>
+                        <TableHead className="text-right">Balance</TableHead>
+                        <TableHead className="w-36">Amount Paid (₱)</TableHead>
+                        <TableHead className="w-44">Remarks</TableHead>
                       </TableRow>
-                      {groupLoans.map((loan, i) => {
-                        const entry = entries.find((e) => e.loanId === loan.id);
-                        if (!entry) return null;
-                        const amt = parseFloat(entry.amount);
-                        const willSubmit = amt > 0 && !entry.done;
-                        const beforeRelease = !!date && date < loan.release_date.slice(0, 10);
+                    </TableHeader>
+                    <TableBody>
+                      {([
+                        { label: "Active",             loans: loanGroups.active,      color: "bg-emerald-50/70 dark:bg-emerald-950/20", textColor: "text-emerald-700 dark:text-emerald-400" },
+                        { label: "Reconstruct",        loans: loanGroups.reconstruct, color: "bg-blue-50/70 dark:bg-blue-950/20",       textColor: "text-blue-700 dark:text-blue-400" },
+                        { label: "Past Due / Overdue", loans: loanGroups.pastDue,     color: "bg-red-50/70 dark:bg-red-950/20",         textColor: "text-red-700 dark:text-red-400" },
+                      ] as const).map(({ label, loans: rawGroup, color, textColor }) => {
+                        const groupLoans = clientSearch.trim()
+                          ? rawGroup.filter((l) => {
+                              const q = clientSearch.toLowerCase();
+                              return l.client.name.toLowerCase().includes(q) || l.client.store_name.toLowerCase().includes(q);
+                            })
+                          : rawGroup;
+                        if (groupLoans.length === 0) return null;
                         return (
-                          <TableRow key={loan.id} className={entry.done ? "bg-emerald-50/40 opacity-60 dark:bg-emerald-950/20" : ""}>
-                            <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
-                            <TableCell>
-                              <p className="font-medium leading-tight">{loan.client.name}</p>
-                              <p className="text-xs text-muted-foreground">{loan.client.store_name}</p>
-                            </TableCell>
-                            <TableCell className="text-right num text-sm text-muted-foreground">{formatPHP(loan.daily_payment)}</TableCell>
-                            <TableCell className="text-right num text-sm">{formatPHP(loan.current_balance)}</TableCell>
-                            <TableCell>
-                              {entry.done ? (
-                                <span className="text-xs font-medium text-emerald-600">✓ Recorded</span>
-                              ) : (
-                                <div>
-                                  <Input
-                                    type="number" min={0} value={entry.amount}
-                                    placeholder={String(loan.daily_payment)}
-                                    onChange={(e) => updateEntry(loan.id, "amount", e.target.value)}
-                                    className={`h-8 text-sm ${beforeRelease || entry.error ? "border-destructive" : ""}`}
-                                    disabled={saving}
-                                  />
-                                  {(beforeRelease || entry.error) && (
-                                    <p className="text-[10px] text-destructive mt-0.5 leading-tight">{entry.error ?? "Before release date"}</p>
-                                  )}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {!entry.done && (
-                                <Input value={entry.remarks} onChange={(e) => updateEntry(loan.id, "remarks", e.target.value)} placeholder="Optional…" className="h-8 text-sm" disabled={saving} />
-                              )}
-                            </TableCell>
-                          </TableRow>
+                          <React.Fragment key={label}>
+                            <TableRow className={color}>
+                              <TableCell colSpan={6} className={`py-1.5 px-5 text-xs font-semibold uppercase tracking-wider ${textColor}`}>
+                                {label} ({groupLoans.length})
+                              </TableCell>
+                            </TableRow>
+                            {groupLoans.map((loan, i) => {
+                              const entry = entries.find((e) => e.loanId === loan.id);
+                              if (!entry) return null;
+                              const beforeRelease = !!date && date < loan.release_date.slice(0, 10);
+                              return (
+                                <TableRow key={loan.id} className={entry.done ? "bg-emerald-50/40 opacity-60 dark:bg-emerald-950/20" : ""}>
+                                  <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
+                                  <TableCell>
+                                    <p className="font-medium leading-tight">{loan.client.name}</p>
+                                    <p className="text-xs text-muted-foreground">{loan.client.store_name}</p>
+                                  </TableCell>
+                                  <TableCell className="text-right num text-sm text-muted-foreground">{formatPHP(loan.daily_payment)}</TableCell>
+                                  <TableCell className="text-right num text-sm">{formatPHP(loan.current_balance)}</TableCell>
+                                  <TableCell>
+                                    {entry.done ? (
+                                      <span className="text-xs font-medium text-emerald-600">✓ Recorded</span>
+                                    ) : (
+                                      <div>
+                                        <Input
+                                          type="number" min={0} value={entry.amount}
+                                          placeholder={String(loan.daily_payment)}
+                                          onChange={(e) => updateEntry(loan.id, "amount", e.target.value)}
+                                          className={`h-8 text-sm ${beforeRelease || entry.error ? "border-destructive" : ""}`}
+                                          disabled={saving}
+                                        />
+                                        {(beforeRelease || entry.error) && (
+                                          <p className="text-[10px] text-destructive mt-0.5 leading-tight">{entry.error ?? "Before release date"}</p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {!entry.done && (
+                                      <Input value={entry.remarks} onChange={(e) => updateEntry(loan.id, "remarks", e.target.value)} placeholder="Optional…" className="h-8 text-sm" disabled={saving} />
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </React.Fragment>
                         );
                       })}
-                    </React.Fragment>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
+          </>
+        ) : (
+          /* ── By Client mode ─────────────────────────────────────────────── */
+          <>
+            <div className="flex flex-wrap items-end gap-3 px-5 py-4 border-b">
+              <div className="space-y-1.5 flex-1 min-w-48">
+                <p className="text-xs font-medium">Search client</p>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="pl-8"
+                    placeholder="Type client name or store…"
+                    value={clientModeSearch}
+                    onChange={(e) => setClientModeSearch(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium">Collection date</p>
+                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-44" />
+              </div>
+            </div>
+
+            {clientModeSearch.trim() === "" ? (
+              <div className="py-16 text-center text-sm text-muted-foreground">Type a client name above to search.</div>
+            ) : clientModeLoans.length === 0 ? (
+              <div className="py-16 text-center text-sm text-muted-foreground">No active loans found for &ldquo;{clientModeSearch}&rdquo;.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table className="min-w-200">
+                  <TableHeader>
+                    <TableRow className="text-xs">
+                      <TableHead>Client / Business</TableHead>
+                      <TableHead>Collector</TableHead>
+                      <TableHead className="text-right">Daily</TableHead>
+                      <TableHead className="text-right">Balance</TableHead>
+                      <TableHead className="w-36">Amount Paid (₱)</TableHead>
+                      <TableHead className="w-44">Remarks</TableHead>
+                      <TableHead className="w-28" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {clientModeLoans.map((loan) => {
+                      const row = getClientRow(loan.id);
+                      const beforeRelease = !!date && date < loan.release_date.slice(0, 10);
+                      return (
+                        <TableRow key={loan.id} className={row.done ? "bg-emerald-50/40 opacity-60 dark:bg-emerald-950/20" : ""}>
+                          <TableCell>
+                            <p className="font-medium leading-tight">{loan.client.name}</p>
+                            <p className="text-xs text-muted-foreground">{loan.client.store_name}</p>
+                          </TableCell>
+                          <TableCell>
+                            <p className="text-sm">{loan.collector?.name ?? "—"}</p>
+                          </TableCell>
+                          <TableCell className="text-right num text-sm text-muted-foreground">{formatPHP(loan.daily_payment)}</TableCell>
+                          <TableCell className="text-right num text-sm">{formatPHP(loan.current_balance)}</TableCell>
+                          <TableCell>
+                            {row.done ? (
+                              <span className="text-xs font-medium text-emerald-600">✓ Recorded</span>
+                            ) : (
+                              <div>
+                                <Input
+                                  type="number" min={0} value={row.amount}
+                                  placeholder={String(loan.daily_payment)}
+                                  onChange={(e) => updateClientRow(loan.id, "amount", e.target.value)}
+                                  className={`h-8 text-sm ${beforeRelease || row.error ? "border-destructive" : ""}`}
+                                  disabled={row.saving}
+                                />
+                                {(beforeRelease || row.error) && (
+                                  <p className="text-[10px] text-destructive mt-0.5 leading-tight">{row.error ?? "Before release date"}</p>
+                                )}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {!row.done && (
+                              <Input value={row.remarks} onChange={(e) => updateClientRow(loan.id, "remarks", e.target.value)} placeholder="Optional…" className="h-8 text-sm" disabled={row.saving} />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {!row.done && canSubmit && (
+                              <Button
+                                size="sm"
+                                className="h-8 w-full bg-primary text-primary-foreground hover:bg-primary-glow"
+                                disabled={row.saving || !row.amount || parseFloat(row.amount) <= 0}
+                                onClick={() => handleClientModeRecord(loan)}
+                              >
+                                {row.saving
+                                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  : <><CheckCircle2 className="mr-1 h-3.5 w-3.5" />Record</>}
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </>
         )}
       </div>
