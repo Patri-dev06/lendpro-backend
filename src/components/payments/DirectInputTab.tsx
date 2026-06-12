@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Loader2, Pencil, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SearchableCombobox } from "@/components/shared/SearchableCombobox";
 import { EditPaymentDialog, type PaymentToEdit } from "@/components/payments/EditPaymentDialog";
@@ -74,7 +75,9 @@ export function DirectInputTab() {
   const [date, setDate]               = useState(new Date().toISOString().slice(0, 10));
   const [entries, setEntries]         = useState<EntryRow[]>([]);
   const [saving, setSaving]           = useState(false);
-  const [clientSearch, setClientSearch] = useState("");
+  const [clientSearch, setClientSearch]   = useState("");
+  const [historySearch, setHistorySearch] = useState("");
+  const [confirmPayment, setConfirmPayment] = useState<ApiPayment | null>(null);
 
   const [editTarget, setEditTarget]   = useState<PaymentToEdit | null>(null);
   const [editAdminPin, setEditAdminPin] = useState<string>("");
@@ -123,9 +126,20 @@ export function DirectInputTab() {
     setEntries(ordered.map((l) => ({ loanId: l.id, amount: "", remarks: "" })));
   }, [loanGroups]);
 
+  useEffect(() => { setPage(1); }, [historySearch]);
+
+  const filteredHistory = useMemo(() => {
+    const q = historySearch.trim().toLowerCase();
+    if (!q) return history;
+    return history.filter((p) =>
+      p.client.name.toLowerCase().includes(q) ||
+      (p.remarks ?? "").toLowerCase().includes(q)
+    );
+  }, [history, historySearch]);
+
   const pagedHistory = useMemo(
-    () => history.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [history, page],
+    () => filteredHistory.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredHistory, page],
   );
 
   function updateEntry(loanId: number, field: "amount" | "remarks", value: string) {
@@ -150,10 +164,6 @@ export function DirectInputTab() {
 
   async function handleRequestDelete(payment: ApiPayment) {
     if (!token) return;
-    if (!window.confirm(
-      `Request deletion of ₱${payment.amount.toFixed(2)} payment for ${payment.client.name}?\n` +
-      `An administrator will need to approve it.`
-    )) return;
     try {
       const updated = await apiRequest<ApiPayment>("POST", `payments/${payment.id}/request-delete`, { token });
       setHistory((prev) => prev.map((p) => p.id === updated.id ? updated : p));
@@ -171,6 +181,15 @@ export function DirectInputTab() {
       toast.success("Deletion request cancelled.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to cancel request.");
+    }
+  }
+
+  function proceedWithDelete(payment: ApiPayment) {
+    setConfirmPayment(null);
+    if (isAdmin) {
+      handleAdminDelete(payment);
+    } else {
+      setPinMode({ mode: "delete", payment });
     }
   }
 
@@ -392,8 +411,23 @@ export function DirectInputTab() {
       {/* Payment history */}
       <div className="rounded-2xl border bg-card shadow-sm">
         <div className="border-b px-5 py-4">
-          <h3 className="font-display text-base font-semibold">Recent payment history</h3>
-          <p className="text-xs text-muted-foreground">{history.length} payments across all clients</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-display text-base font-semibold">Recent payment history</h3>
+              <p className="text-xs text-muted-foreground">
+                {historySearch ? `${filteredHistory.length} of ${history.length}` : history.length} payment{history.length !== 1 ? "s" : ""} across all clients
+              </p>
+            </div>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-8 w-52 pl-8 text-sm"
+                placeholder="Search client or remarks…"
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+              />
+            </div>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <Table className="min-w-150">
@@ -444,14 +478,14 @@ export function DirectInputTab() {
                           </Button>
                         )}
 
-                        {/* Delete — admin direct; others via PIN (with request fallback) */}
+                        {/* Delete — confirmation first, then admin direct or PIN/request flow */}
                         {isAdmin ? (
                           p.delete_requested ? (
                             <>
                               <Button variant="ghost" size="sm"
                                 className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
                                 title="Approve and delete"
-                                onClick={() => handleAdminDelete(p)}>
+                                onClick={() => setConfirmPayment(p)}>
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                               <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground"
@@ -464,7 +498,7 @@ export function DirectInputTab() {
                             <Button variant="ghost" size="sm"
                               className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
                               title="Delete payment"
-                              onClick={() => handleAdminDelete(p)}>
+                              onClick={() => setConfirmPayment(p)}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           )
@@ -479,7 +513,7 @@ export function DirectInputTab() {
                             <Button variant="ghost" size="sm"
                               className="h-7 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                               title="Delete with admin PIN or request deletion"
-                              onClick={() => setPinMode({ mode: "delete", payment: p })}>
+                              onClick={() => setConfirmPayment(p)}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           )
@@ -491,16 +525,46 @@ export function DirectInputTab() {
                 ))}
                 <TableRow className="border-t-2 bg-muted/40">
                   <TableCell className="py-3 text-xs font-semibold text-muted-foreground">Total</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{history.length} transactions</TableCell>
-                  <TableCell className="text-right num font-bold">{formatPHP(history.reduce((s, p) => s + p.amount, 0))}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{filteredHistory.length} transactions</TableCell>
+                  <TableCell className="text-right num font-bold">{formatPHP(filteredHistory.reduce((s, p) => s + p.amount, 0))}</TableCell>
                   <TableCell colSpan={4} />
                 </TableRow>
               </>)}
             </TableBody>
           </Table>
         </div>
-        <Paginator page={page} pageSize={PAGE_SIZE} total={history.length} onPageChange={setPage} />
+        <Paginator page={page} pageSize={PAGE_SIZE} total={filteredHistory.length} onPageChange={setPage} />
       </div>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!confirmPayment} onOpenChange={(v) => { if (!v) setConfirmPayment(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete payment?</DialogTitle>
+            <DialogDescription>
+              {confirmPayment && (
+                <>
+                  You are about to delete a <strong>{formatPHP(confirmPayment.amount)}</strong> payment
+                  for <strong>{confirmPayment.client.name}</strong> on{" "}
+                  <strong>{formatDate(confirmPayment.payment_date)}</strong>.
+                  The loan balance will be restored.
+                  {!isAdmin && " You will need the admin PIN to proceed."}
+                  <br /><br />This action cannot be undone.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setConfirmPayment(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => confirmPayment && proceedWithDelete(confirmPayment)}
+            >
+              Yes, delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <EditPaymentDialog
         payment={editTarget}
