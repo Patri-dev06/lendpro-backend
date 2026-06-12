@@ -158,16 +158,102 @@ function ReportsPage() {
 
   function exportCsv() {
     if (rows.length === 0) return;
-    const keys = Object.keys(rows[0] as object);
-    const header = keys.join(",");
-    const body = (rows as Record<string, unknown>[]).map((r) =>
-      keys.map((k) => JSON.stringify(r[k] ?? "")).join(",")
-    ).join("\n");
-    const blob = new Blob([header + "\n" + body], { type: "text/csv" });
+
+    const esc = (v: string | number | null | undefined) => {
+      const s = String(v ?? "");
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const row = (...cells: (string | number | null | undefined)[]) => cells.map(esc).join(",");
+
+    const lines: string[] = [];
+
+    if (active === "daily-collection") {
+      const data = rows as Array<{ payment_date: string; amount: number; new_balance: number; remarks: string | null; client: { name: string }; collector: { name: string } }>;
+      lines.push(row("Date", "Client", "Collector", "Amount Paid", "New Balance", "Remarks"));
+      for (const p of data)
+        lines.push(row(p.payment_date, p.client?.name, p.collector?.name, p.amount, p.new_balance, p.remarks));
+    } else if (active === "active-loans" || active === "overdue" || active === "past-due" || active === "paid-loans") {
+      const data = rows as Array<{ number: string; principal: number; total_receivable: number; daily_payment: number; current_balance: number; status: string; due_date: string; client: { name: string; store_name: string }; collector: { name: string } }>;
+      lines.push(row("Loan #", "Client", "Store", "Collector", "Principal", "Total Receivable", "Daily Payment", "Balance", "Due Date", "Status"));
+      for (const l of data)
+        lines.push(row(l.number, l.client?.name, l.client?.store_name, l.collector?.name, l.principal, l.total_receivable, l.daily_payment, l.current_balance, l.due_date, l.status));
+    } else if (active === "collector-performance") {
+      const data = rows as Array<{ name: string; code: string; area: string; assigned: number; expected: number; collected: number; rate: number }>;
+      lines.push(row("Collector", "Code", "Area", "Clients", "Expected", "Collected", "Rate (%)"));
+      for (const c of data)
+        lines.push(row(c.name, c.code, c.area, c.assigned, c.expected, c.collected, c.rate));
+    } else if (active === "monthly-collection") {
+      const data = rows as Array<{ month: string; collected: number; transactions: number }>;
+      lines.push(row("Month", "Total Collected", "Transactions"));
+      for (const r of data) lines.push(row(r.month, r.collected, r.transactions));
+    } else if (active === "monthly-releases") {
+      const data = rows as Array<{ month: string; releases: number; count: number }>;
+      lines.push(row("Month", "Total Released", "Loans Released"));
+      for (const r of data) lines.push(row(r.month, r.releases, r.count));
+    }
+
+    const csv  = lines.join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href = url; a.download = `${active}-report.csv`; a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function exportPdf() {
+    if (rows.length === 0) return;
+
+    const reportLabel = CATEGORIES.find((c) => c.id === active)?.label ?? active;
+    const php = (n: number) =>
+      "₱" + Number(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    let thead = "";
+    let tbody = "";
+    let tfoot = "";
+
+    if (active === "daily-collection") {
+      const data = rows as Array<{ payment_date: string; amount: number; new_balance: number; remarks: string | null; client: { name: string }; collector: { name: string } }>;
+      const total = data.reduce((s, p) => s + p.amount, 0);
+      thead = `<tr><th>Date</th><th>Client</th><th>Collector</th><th class="r">Amount Paid</th><th class="r">New Balance</th><th>Remarks</th></tr>`;
+      tbody = data.map((p) => `<tr><td>${p.payment_date}</td><td>${p.client?.name ?? "—"}</td><td>${p.collector?.name ?? "—"}</td><td class="r">${php(p.amount)}</td><td class="r">${php(p.new_balance)}</td><td>${p.remarks ?? "—"}</td></tr>`).join("");
+      tfoot = `<tr class="tot"><td colspan="3">${data.length} transaction${data.length !== 1 ? "s" : ""}</td><td class="r">${php(total)}</td><td colspan="2"></td></tr>`;
+    } else if (active === "active-loans" || active === "overdue" || active === "past-due" || active === "paid-loans") {
+      const data = rows as Array<{ number: string; principal: number; total_receivable: number; daily_payment: number; current_balance: number; status: string; due_date: string; client: { name: string }; collector: { name: string } }>;
+      thead = `<tr><th>Loan #</th><th>Client</th><th>Collector</th><th class="r">Principal</th><th class="r">Total Receivable</th><th class="r">Balance</th><th>Due Date</th><th>Status</th></tr>`;
+      tbody = data.map((l) => `<tr><td class="mono">${l.number}</td><td>${l.client?.name ?? "—"}</td><td>${l.collector?.name ?? "—"}</td><td class="r">${php(l.principal)}</td><td class="r">${php(l.total_receivable)}</td><td class="r">${php(l.current_balance)}</td><td>${l.due_date ?? "—"}</td><td>${l.status}</td></tr>`).join("");
+      tfoot = `<tr class="tot"><td colspan="3">${data.length} loan${data.length !== 1 ? "s" : ""}</td><td class="r">${php(data.reduce((s, l) => s + l.principal, 0))}</td><td class="r">${php(data.reduce((s, l) => s + l.total_receivable, 0))}</td><td class="r">${php(data.reduce((s, l) => s + l.current_balance, 0))}</td><td colspan="2"></td></tr>`;
+    } else if (active === "collector-performance") {
+      const data = rows as Array<{ name: string; code: string; area: string; assigned: number; expected: number; collected: number; rate: number }>;
+      thead = `<tr><th>Collector</th><th>Code</th><th>Area</th><th class="r">Clients</th><th class="r">Expected</th><th class="r">Collected</th><th class="r">Rate</th></tr>`;
+      tbody = data.map((c) => `<tr><td>${c.name}</td><td class="mono">${c.code}</td><td>${c.area}</td><td class="r">${c.assigned}</td><td class="r">${php(c.expected)}</td><td class="r">${php(c.collected)}</td><td class="r">${c.rate}%</td></tr>`).join("");
+      tfoot = `<tr class="tot"><td colspan="4">${data.length} collector${data.length !== 1 ? "s" : ""}</td><td class="r">${php(data.reduce((s, c) => s + c.expected, 0))}</td><td class="r">${php(data.reduce((s, c) => s + c.collected, 0))}</td><td></td></tr>`;
+    } else if (active === "monthly-collection") {
+      const data = rows as Array<{ month: string; collected: number; transactions: number }>;
+      thead = `<tr><th>Month</th><th class="r">Total Collected</th><th class="r">Transactions</th></tr>`;
+      tbody = data.map((r) => `<tr><td>${r.month}</td><td class="r">${php(Number(r.collected))}</td><td class="r">${r.transactions}</td></tr>`).join("");
+      tfoot = `<tr class="tot"><td>All months</td><td class="r">${php(data.reduce((s, r) => s + Number(r.collected), 0))}</td><td class="r">${data.reduce((s, r) => s + r.transactions, 0)}</td></tr>`;
+    } else if (active === "monthly-releases") {
+      const data = rows as Array<{ month: string; releases: number; count: number }>;
+      thead = `<tr><th>Month</th><th class="r">Total Released</th><th class="r">Loans Released</th></tr>`;
+      tbody = data.map((r) => `<tr><td>${r.month}</td><td class="r">${php(Number(r.releases))}</td><td class="r">${r.count}</td></tr>`).join("");
+      tfoot = `<tr class="tot"><td>All months</td><td class="r">${php(data.reduce((s, r) => s + Number(r.releases), 0))}</td><td class="r">${data.reduce((s, r) => s + r.count, 0)}</td></tr>`;
+    }
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${reportLabel}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:20px}h2{font-size:15px;margin-bottom:4px}p.sub{font-size:10px;color:#666;margin-bottom:14px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;vertical-align:top}th{background:#f2f2f2;font-weight:600}.r{text-align:right}.mono{font-family:monospace;font-size:10px}tr.tot td{background:#f5f5f5;font-weight:700;border-top:2px solid #888}@media print{body{padding:0}}</style>
+</head><body>
+<h2>${reportLabel}</h2>
+<p class="sub">Generated: ${new Date().toLocaleString("en-PH")}</p>
+<table><thead>${thead}</thead><tbody>${tbody}</tbody><tfoot>${tfoot}</tfoot></table>
+</body></html>`;
+
+    const w = window.open("", "_blank", "width=960,height=720");
+    if (!w) { toast.error("Popup blocked. Allow popups for this site and try again."); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
   }
 
   return (
@@ -290,10 +376,10 @@ function ReportsPage() {
           <Button variant="outline" size="sm" onClick={exportCsv} disabled={rows.length === 0}>
             <FileSpreadsheet className="mr-1.5 h-4 w-4" />Export CSV
           </Button>
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
+          <Button variant="outline" size="sm" onClick={exportPdf} disabled={rows.length === 0}>
             <Printer className="mr-1.5 h-4 w-4" />Print
           </Button>
-          <Button variant="outline" size="sm" onClick={exportCsv} disabled={rows.length === 0}>
+          <Button variant="outline" size="sm" onClick={exportPdf} disabled={rows.length === 0}>
             <Download className="mr-1.5 h-4 w-4" />Export PDF
           </Button>
         </div>

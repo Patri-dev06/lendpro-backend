@@ -96,21 +96,17 @@ export function UploadExcelTab() {
 
       const lines: string[] = [];
       lines.push(row(
-        "loan_number", "payment_date", "amount", "remarks",
-        "── REFERENCE ONLY (do not delete columns above) ──",
-        "client_name", "store_name", "daily_payment",
+        "loan_number", "payment_date", "client_name", "daily_payment", "amount_paid", "remarks",
       ));
 
       for (const l of filtered) {
         lines.push(row(
           l.number,
           templateDate,
-          l.daily_payment,
-          "",
-          "",
           l.client.name,
-          l.client.store_name,
           l.daily_payment,
+          "",
+          "",
         ));
       }
 
@@ -165,6 +161,12 @@ export function UploadExcelTab() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
+        // Backend returns {errors: string[]} when every row fails
+        if (Array.isArray(data?.errors)) {
+          setResult({ imported: 0, errors: data.errors });
+          toast.error(`No payments imported — ${data.errors.length} row${data.errors.length !== 1 ? "s" : ""} had errors.`);
+          return;
+        }
         const msg =
           data?.message ??
           (data?.errors ? Object.values(data.errors as Record<string, string[]>)[0]?.[0] : null) ??
@@ -174,8 +176,12 @@ export function UploadExcelTab() {
       }
 
       setResult(data);
-      toast.success(`${data.imported} payment${data.imported !== 1 ? "s" : ""} imported successfully.`);
-      handleRemove();
+      if (data.imported > 0) {
+        toast.success(`${data.imported} payment${data.imported !== 1 ? "s" : ""} imported successfully.`);
+        handleRemove();
+      } else {
+        toast.error(`No payments imported — ${data.errors?.length ?? 0} row${data.errors?.length !== 1 ? "s" : ""} had errors.`);
+      }
     } catch {
       toast.error("Network error. Please try again.");
     } finally {
@@ -250,13 +256,12 @@ export function UploadExcelTab() {
             </p>
             <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-muted-foreground">
               <span><span className="font-mono font-semibold text-foreground">loan_number</span> — auto-filled, do not edit</span>
+              <span><span className="font-mono font-semibold text-foreground">daily_payment</span> — reference only, do not edit</span>
               <span><span className="font-mono font-semibold text-foreground">payment_date</span> — auto-filled, change if needed</span>
-              <span><span className="font-mono font-semibold text-foreground">amount</span> — pre-filled with daily payment, edit if partial</span>
+              <span><span className="font-mono font-semibold text-foreground">amount_paid</span> — <strong>fill this in</strong> for each client who paid</span>
+              <span><span className="font-mono font-semibold text-foreground">client_name</span> — reference only, do not edit</span>
               <span><span className="font-mono font-semibold text-foreground">remarks</span> — optional notes</span>
             </div>
-            <p className="text-muted-foreground pt-0.5">
-              Columns to the right of <span className="font-mono">remarks</span> are reference-only and are ignored on upload.
-            </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
