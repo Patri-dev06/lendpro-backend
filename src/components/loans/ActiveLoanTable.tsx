@@ -35,6 +35,8 @@ export function ActiveLoanTable({ loans, loading, onReconstructed, onLoanUpdated
   const [status, setStatus]     = useState("all");
   const [type, setType]         = useState("all");
   const [collector, setCollector] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate]     = useState("");
   const [sortCol, setSortCol]   = useState<SortCol | null>(null);
   const [sortDir, setSortDir]   = useState<"asc" | "desc">("desc");
   const [selectedLoan, setSelectedLoan] = useState<ApiLoan | null>(null);
@@ -147,6 +149,9 @@ export function ActiveLoanTable({ loans, loading, onReconstructed, onLoanUpdated
     if (status !== "all" && l.status !== status) return false;
     if (type !== "all" && l.loan_type !== type) return false;
     if (collector !== "all" && String(l.collector_id) !== collector) return false;
+    const released = l.release_date.slice(0, 10);
+    if (fromDate && released < fromDate) return false;
+    if (toDate && released > toDate) return false;
     const s = q.toLowerCase();
     if (s && !l.number.toLowerCase().includes(s) &&
              !l.client.name.toLowerCase().includes(s) &&
@@ -169,7 +174,7 @@ export function ActiveLoanTable({ loans, loading, onReconstructed, onLoanUpdated
       })
     : filtered;
 
-  const activeFilters = [status !== "all", type !== "all", collector !== "all", q !== ""].filter(Boolean).length;
+  const activeFilters = [status !== "all", type !== "all", collector !== "all", q !== "", fromDate !== "", toDate !== ""].filter(Boolean).length;
 
   const filterLabel = useMemo(() => {
     const parts: string[] = [];
@@ -179,12 +184,15 @@ export function ActiveLoanTable({ loans, loading, onReconstructed, onLoanUpdated
       const c = collectors.find((c) => String(c.id) === collector);
       if (c) parts.push(`Collector: ${c.name}`);
     }
+    if (fromDate || toDate) {
+      parts.push(`Released: ${fromDate || "…"} to ${toDate || "…"}`);
+    }
     if (q) parts.push(`Search: "${q}"`);
     return parts.length > 0 ? parts.join(" | ") : "All loans";
-  }, [status, type, collector, q, collectors]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, type, collector, q, fromDate, toDate, collectors]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function clearFilters() {
-    setQ(""); setStatus("all"); setType("all"); setCollector("all");
+    setQ(""); setStatus("all"); setType("all"); setCollector("all"); setFromDate(""); setToDate("");
   }
 
   return (
@@ -259,6 +267,18 @@ export function ActiveLoanTable({ loans, loading, onReconstructed, onLoanUpdated
               ))}
             </SelectContent>
           </Select>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Released</span>
+            <Input
+              type="date" className="h-8 w-36 text-xs" value={fromDate} max={toDate || undefined}
+              onChange={(e) => setFromDate(e.target.value)} title="Released from"
+            />
+            <span className="text-xs text-muted-foreground">–</span>
+            <Input
+              type="date" className="h-8 w-36 text-xs" value={toDate} min={fromDate || undefined}
+              onChange={(e) => setToDate(e.target.value)} title="Released to"
+            />
+          </div>
           {activeFilters > 0 && (
             <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground" onClick={clearFilters}>
               <X className="h-3 w-3" />Clear {activeFilters} filter{activeFilters !== 1 ? "s" : ""}

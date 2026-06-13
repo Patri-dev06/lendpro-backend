@@ -8,6 +8,7 @@ import { CollectionEfficiencyBanner } from "@/components/dashboard/CollectionEff
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { formatPHP } from "@/lib/format";
+import { ExportButtons } from "@/components/shared/ExportButtons";
 
 interface ApiLoan {
   id: number;
@@ -89,9 +90,24 @@ export function CollectorDashboard() {
       </div>
 
       <div className="rounded-2xl border bg-card shadow-sm">
-        <div className="border-b px-5 py-4">
-          <h3 className="font-display text-base font-semibold">Active loan portfolio</h3>
-          <p className="text-xs text-muted-foreground">All active clients and current balances</p>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+          <div>
+            <h3 className="font-display text-base font-semibold">Active loan portfolio</h3>
+            <p className="text-xs text-muted-foreground">All active clients and current balances</p>
+          </div>
+          <ExportButtons
+            filename="active-loan-portfolio"
+            title="Active loan portfolio"
+            columns={[
+              { header: "Client" }, { header: "Address" }, { header: "Contact" },
+              { header: "Daily Due", align: "right", money: true }, { header: "Balance", align: "right", money: true },
+              { header: "Status" }, { header: "Collector" },
+            ]}
+            rows={activeLoans.map((l) => [
+              l.client.name, l.client.address, l.client.phone,
+              l.daily_payment, l.current_balance, l.status, l.collector.name,
+            ])}
+          />
         </div>
         <div className="overflow-x-auto">
           <Table className="min-w-175">

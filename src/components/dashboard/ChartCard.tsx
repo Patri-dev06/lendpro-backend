@@ -1,25 +1,34 @@
-import { Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ExportButtons, type ExportColumn } from "@/components/shared/ExportButtons";
 
 interface ChartCardProps {
   title: string;
   subtitle?: string;
   children: React.ReactNode;
-  onExport?: () => void;
+  /** When provided, renders CSV + PDF export buttons for the chart's underlying data. */
+  exportConfig?: {
+    filename: string;
+    title?: string;
+    columns: ExportColumn[];
+    rows: (string | number)[][];
+  };
 }
 
-export function ChartCard({ title, subtitle, children, onExport }: ChartCardProps) {
+export function ChartCard({ title, subtitle, children, exportConfig }: ChartCardProps) {
   return (
     <div className="rounded-2xl border bg-card p-5 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <h3 className="font-display text-sm font-semibold">{title}</h3>
           {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
         </div>
-        {onExport && (
-          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={onExport}>
-            <Download className="h-3.5 w-3.5" />Export
-          </Button>
+        {exportConfig && (
+          <ExportButtons
+            filename={exportConfig.filename}
+            title={exportConfig.title ?? title}
+            subtitle={subtitle}
+            columns={exportConfig.columns}
+            rows={exportConfig.rows}
+          />
         )}
       </div>
       {children}

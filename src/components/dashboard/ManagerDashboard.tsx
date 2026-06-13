@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Banknote, TrendingUp, Wallet, Activity, Target, AlertTriangle, AlertOctagon, Loader2, Plus, Download } from "lucide-react";
+import { Banknote, TrendingUp, Wallet, Activity, Target, AlertTriangle, AlertOctagon, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { downloadCsv, exportDate } from "@/lib/export";
+import { ExportButtons } from "@/components/shared/ExportButtons";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line, Legend } from "recharts";
 import { StatCard } from "@/components/finance/StatCard";
@@ -106,20 +106,21 @@ export function ManagerDashboard() {
       />
 
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => downloadCsv(`portfolio-summary-${exportDate()}`,
-          ["Metric", "Value"],
-          [
-            ["Active Loans",            counts.active],
-            ["Overdue Accounts",        counts.overdue],
-            ["Past Due Accounts",       counts.past_due],
-            ["Paid Loans",              counts.paid],
-            ["Total Receivable (PHP)",  financials.total_receivable],
-            ["Total Collected (PHP)",   financials.total_collected],
-            ["Total Outstanding (PHP)", financials.total_outstanding],
+        <ExportButtons
+          filename="portfolio-summary"
+          title="Portfolio Summary"
+          columns={[{ header: "Metric" }, { header: "Value", align: "right" }]}
+          rows={[
+            ["Active Loans",              counts.active],
+            ["Overdue Accounts",          counts.overdue],
+            ["Past Due Accounts",         counts.past_due],
+            ["Paid Loans",                counts.paid],
+            ["Total Receivable (PHP)",    financials.total_receivable],
+            ["Total Collected (PHP)",     financials.total_collected],
+            ["Total Outstanding (PHP)",   financials.total_outstanding],
             ["Collection Efficiency (%)", financials.collection_efficiency],
-          ])}>
-          <Download className="h-3.5 w-3.5" />Export Portfolio Summary
-        </Button>
+          ]}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
@@ -133,7 +134,16 @@ export function ManagerDashboard() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <ChartCard title="Collector performance" subtitle="Expected vs actual today (₱)" onExport={() => downloadCsv(`collector-performance-${exportDate()}`, ["Collector", "Expected (PHP)", "Actual (PHP)", "Efficiency (%)"], stats.collector_stats.map((c) => [c.name, c.expected.toFixed(2), c.actual.toFixed(2), c.expected > 0 ? Math.round((c.actual / c.expected) * 100) : 0]))}>
+        <ChartCard title="Collector performance" subtitle="Expected vs actual today (₱)" exportConfig={{
+          filename: "collector-performance",
+          columns: [
+            { header: "Collector" },
+            { header: "Expected", align: "right", money: true },
+            { header: "Actual", align: "right", money: true },
+            { header: "Efficiency (%)", align: "right" },
+          ],
+          rows: stats.collector_stats.map((c) => [c.name, c.expected, c.actual, `${c.expected > 0 ? Math.round((c.actual / c.expected) * 100) : 0}%`]),
+        }}>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={collectorChartData}>
               <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
@@ -147,7 +157,11 @@ export function ManagerDashboard() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Monthly collection performance" subtitle="Total collected per month" onExport={() => downloadCsv(`monthly-collections-${exportDate()}`, ["Month", "Total Collected (PHP)"], stats.monthly_collection.map((r) => [r.month, Number(r.collected)]))}>
+        <ChartCard title="Monthly collection performance" subtitle="Total collected per month" exportConfig={{
+          filename: "monthly-collections",
+          columns: [{ header: "Month" }, { header: "Total Collected", align: "right", money: true }],
+          rows: stats.monthly_collection.map((r) => [r.month, Number(r.collected)]),
+        }}>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={monthlyCollection}>
               <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
@@ -191,16 +205,21 @@ export function ManagerDashboard() {
             <h3 className="font-display text-base font-semibold">Collector performance</h3>
             <p className="text-xs text-muted-foreground">Today's expected vs collected — top performers highlighted</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => downloadCsv(`collector-performance-today-${exportDate()}`,
-              ["Collector", "Area", "Assigned", "Expected (PHP)", "Actual (PHP)", "Efficiency (%)", "Missed", "Overdue", "Past Due"],
-              stats.collector_stats.map((c) => {
-                const r = c.expected > 0 ? Math.round((c.actual / c.expected) * 100) : 0;
-                return [c.name, c.area, c.assigned, c.expected.toFixed(2), c.actual.toFixed(2), r, c.missed, c.overdue, c.past_due];
-              }))}>
-              <Download className="h-3.5 w-3.5" />Export
-            </Button>
-          </div>
+          <ExportButtons
+            filename="collector-performance-today"
+            title="Collector performance"
+            subtitle="Today's expected vs collected"
+            columns={[
+              { header: "Collector" }, { header: "Area" }, { header: "Assigned", align: "right" },
+              { header: "Expected", align: "right", money: true }, { header: "Actual", align: "right", money: true },
+              { header: "Efficiency (%)", align: "right" }, { header: "Missed", align: "right" },
+              { header: "Overdue", align: "right" }, { header: "Past Due", align: "right" },
+            ]}
+            rows={stats.collector_stats.map((c) => {
+              const r = c.expected > 0 ? Math.round((c.actual / c.expected) * 100) : 0;
+              return [c.name, c.area, c.assigned, c.expected, c.actual, `${r}%`, c.missed, c.overdue, c.past_due];
+            })}
+          />
         </div>
         <div className="overflow-x-auto">
           <Table className="min-w-225">
