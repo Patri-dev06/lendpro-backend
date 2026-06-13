@@ -197,7 +197,9 @@ export function ClientLedgerTab() {
                   ))}
                   <TableRow className="border-t-2 bg-muted/40 font-bold">
                     <TableCell className="text-sm font-semibold">Total</TableCell>
-                    <TableCell className="text-right num font-semibold text-success">{formatPHP(ledger.total_paid)}</TableCell>
+                    <TableCell className="text-right num font-semibold text-success">
+                      {formatPHP(ledger.schedule.reduce((s, r) => s + r.actual, 0))}
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

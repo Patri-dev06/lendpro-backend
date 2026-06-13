@@ -203,6 +203,8 @@ class LoanController extends Controller
         DB::transaction(function () use ($loan, $data, $holidays) {
             $loan->update($data);
             $loan->generateSchedule($holidays);
+            // Re-derive balance from the corrected total_receivable minus payments.
+            $loan->recalculatePaymentLedger();
             AuditLog::record('UPDATE_LOAN', $loan->number, "Corrected active loan {$loan->number} details");
         });
 
@@ -310,6 +312,8 @@ class LoanController extends Controller
             ]);
 
             $newLoan->generateSchedule($holidays);
+            // Keep the new loan's balance derived from the single ledger source.
+            $newLoan->recalculatePaymentLedger();
 
             AuditLog::record(
                 'RECONSTRUCT_LOAN',

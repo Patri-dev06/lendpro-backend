@@ -35,6 +35,7 @@ interface ApiLoan {
 
 interface ApiPayment {
   id: number;
+  loan_id: number;
   payment_date: string;
   amount: number;
   previous_balance: number;
@@ -90,6 +91,7 @@ export function DirectInputTab() {
   const [inputMode, setInputMode]       = useState<"collector" | "client">("collector");
   const [clientModeSearch, setClientModeSearch] = useState("");
   const [clientModeRows, setClientModeRows] = useState<Record<number, { amount: string; remarks: string; saving: boolean; done: boolean; error?: string }>>({});
+  const [dupConfirm, setDupConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const loadData = useCallback(async () => {
     if (!token) return;
@@ -132,6 +134,11 @@ export function DirectInputTab() {
     const ordered = [...loanGroups.active, ...loanGroups.reconstruct, ...loanGroups.pastDue];
     setEntries(ordered.map((l) => ({ loanId: l.id, amount: "", remarks: "" })));
   }, [loanGroups]);
+
+  // After loan data reloads (e.g. once a payment is recorded), clear the
+  // By-Client row state so each row returns to a blank, editable input
+  // instead of staying stuck on "✓ Recorded".
+  useEffect(() => { setClientModeRows({}); }, [loans]);
 
   const clientModeLoans = useMemo(() => {
     const q = clientModeSearch.trim().toLowerCase();
@@ -286,9 +293,38 @@ export function DirectInputTab() {
     if (payment) handleRequestDelete(payment);
   }
 
+  // ── Duplicate-payment guard ─────────────────────────────────────────────────
+  // payment_date is a date column but serializes shifted by timezone, so compare
+  // the local calendar day (matching how the history table displays it).
+  function localYmd(iso: string): string {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function isDatePaid(loanId: number): boolean {
+    return history.some((p) => p.loan_id === loanId && localYmd(p.payment_date) === date);
+  }
+
   // ── Batch submit ───────────────────────────────────────────────────────────
 
-  async function handleSubmitAll() {
+  function handleSubmitAll() {
+    if (!token || toSubmit.length === 0) return;
+    const dupNames = toSubmit
+      .map((e) => loans.find((l) => l.id === e.loanId))
+      .filter((l): l is ApiLoan => !!l && isDatePaid(l.id))
+      .map((l) => l.client.name);
+    if (dupNames.length > 0) {
+      const shown = dupNames.slice(0, 5).join(", ") + (dupNames.length > 5 ? `, +${dupNames.length - 5} more` : "");
+      setDupConfirm({
+        message: `${dupNames.length} of these loan${dupNames.length !== 1 ? "s" : ""} already ${dupNames.length !== 1 ? "have" : "has"} a payment recorded on ${formatDate(date)} (${shown}). Record again for this date anyway?`,
+        onConfirm: doSubmitAll,
+      });
+      return;
+    }
+    doSubmitAll();
+  }
+
+  async function doSubmitAll() {
     if (!token || toSubmit.length === 0) return;
     setSaving(true);
     let successCount = 0;
@@ -336,7 +372,20 @@ export function DirectInputTab() {
     }));
   }
 
-  async function handleClientModeRecord(loan: ApiLoan) {
+  function handleClientModeRecord(loan: ApiLoan) {
+    const amt = parseFloat(getClientRow(loan.id).amount);
+    if (!amt || amt <= 0) return;
+    if (isDatePaid(loan.id)) {
+      setDupConfirm({
+        message: `A payment for ${loan.client.name} on ${formatDate(date)} is already recorded. Record another payment for this date anyway?`,
+        onConfirm: () => doClientModeRecord(loan),
+      });
+      return;
+    }
+    doClientModeRecord(loan);
+  }
+
+  async function doClientModeRecord(loan: ApiLoan) {
     if (!token) return;
     const row = getClientRow(loan.id);
     const amt = parseFloat(row.amount);
@@ -500,6 +549,7 @@ export function DirectInputTab() {
                                           type="number" min={0} value={entry.amount}
                                           placeholder={String(loan.daily_payment)}
                                           onChange={(e) => updateEntry(loan.id, "amount", e.target.value)}
+                                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSubmitAll(); } }}
                                           className={`h-8 text-sm ${beforeRelease || entry.error ? "border-destructive" : ""}`}
                                           disabled={saving}
                                         />
@@ -591,6 +641,7 @@ export function DirectInputTab() {
                                   type="number" min={0} value={row.amount}
                                   placeholder={String(loan.daily_payment)}
                                   onChange={(e) => updateClientRow(loan.id, "amount", e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleClientModeRecord(loan); } }}
                                   className={`h-8 text-sm ${beforeRelease || row.error ? "border-destructive" : ""}`}
                                   disabled={row.saving}
                                 />
@@ -791,6 +842,22 @@ export function DirectInputTab() {
               onClick={() => confirmPayment && proceedWithDelete(confirmPayment)}
             >
               Yes, delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate-payment confirmation dialog */}
+      <Dialog open={!!dupConfirm} onOpenChange={(v) => { if (!v) setDupConfirm(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Payment already recorded</DialogTitle>
+            <DialogDescription>{dupConfirm?.message}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDupConfirm(null)}>Cancel</Button>
+            <Button onClick={() => { const fn = dupConfirm?.onConfirm; setDupConfirm(null); fn?.(); }}>
+              Proceed anyway
             </Button>
           </DialogFooter>
         </DialogContent>

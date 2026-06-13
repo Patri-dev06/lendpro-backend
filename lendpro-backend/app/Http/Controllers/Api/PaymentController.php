@@ -63,33 +63,11 @@ class PaymentController extends Controller
                 'remarks'          => $data['remarks'] ?? null,
             ]);
 
-            $loan->update([
-                'current_balance' => $newBalance,
-                'status'          => $newBalance <= 0 ? 'paid' : $loan->status,
-            ]);
-
-            if ($newBalance <= 0) {
-                $loan->client->update(['status' => 'paid', 'type' => 'renew']);
-            }
-
-            $scheduleRow = ScheduleRow::where('loan_id', $loan->id)
-                ->whereDate('scheduled_date', $data['payment_date'])
-                ->whereIn('status', ['pending', 'partial'])
-                ->first()
-                ?? ScheduleRow::where('loan_id', $loan->id)
-                    ->whereIn('status', ['pending', 'partial'])
-                    ->orderBy('scheduled_date')
-                    ->first();
-
-            if ($scheduleRow) {
-                $newActual = $scheduleRow->actual + $data['amount'];
-                $scheduleRow->update([
-                    'actual'        => $newActual,
-                    'payment_date'  => $data['payment_date'],
-                    'balance_after' => $newBalance,
-                    'status'        => $newActual >= $scheduleRow->expected ? 'paid' : 'partial',
-                ]);
-            }
+            // Re-derive the running ledger (per-payment prev/new, loan balance/status,
+            // and the daily schedule_rows) chronologically, so out-of-order entries
+            // stay consistent across the Direct Input and Client Ledger views.
+            $loan->recalculatePaymentLedger();
+            $newBalance = (float) $loan->current_balance;
 
             AuditLog::record(
                 'RECORD_PAYMENT',
@@ -107,7 +85,7 @@ class PaymentController extends Controller
             return $payment;
         });
 
-        return response()->json($payment->load(['client', 'collector']), 201);
+        return response()->json($payment->fresh(['client', 'collector']), 201);
     }
 
     public function show(Payment $payment): JsonResponse
@@ -193,43 +171,26 @@ class PaymentController extends Controller
         }
 
         DB::transaction(function () use ($data, $payment) {
-            if (isset($data['amount']) && (float) $data['amount'] !== (float) $payment->amount) {
-                $loan    = Loan::findOrFail($payment->loan_id);
-                $oldAmt  = (float) $payment->amount;
-                $newAmt  = (float) $data['amount'];
-                $diff    = $newAmt - $oldAmt;
+            $loan   = Loan::findOrFail($payment->loan_id);
+            $oldAmt = (float) $payment->amount;
 
-                $newLoanBalance    = max(0, $loan->current_balance - $diff);
-                $newPaymentBalance = max(0, $payment->previous_balance - $newAmt);
+            $fields = [];
+            if (isset($data['amount']))             $fields['amount']       = $data['amount'];
+            if (isset($data['payment_date']))       $fields['payment_date'] = $data['payment_date'];
+            if (array_key_exists('remarks', $data)) $fields['remarks']      = $data['remarks'];
+            if ($fields) {
+                $payment->update($fields);
+            }
 
-                $loan->update([
-                    'current_balance' => $newLoanBalance,
-                    'status'          => $newLoanBalance <= 0 ? 'paid' : $loan->status,
-                ]);
+            // Re-derive the whole ledger — handles amount changes and date re-ordering.
+            $loan->recalculatePaymentLedger();
 
-                if ($newLoanBalance <= 0) {
-                    $loan->client->update(['status' => 'paid', 'type' => 'renew']);
-                }
-
-                $payment->update([
-                    'amount'      => $newAmt,
-                    'new_balance' => $newPaymentBalance,
-                ]);
-
+            if (isset($data['amount']) && (float) $data['amount'] !== $oldAmt) {
                 AuditLog::record(
                     'UPDATE_PAYMENT',
                     $loan->number,
-                    "Payment #{$payment->id} amount edited: ₱{$oldAmt} → ₱{$newAmt}"
+                    "Payment #{$payment->id} amount edited: ₱{$oldAmt} → ₱{$data['amount']}"
                 );
-            }
-
-            $updateFields = array_filter([
-                'payment_date' => $data['payment_date'] ?? null,
-                'remarks'      => $data['remarks'] ?? $payment->remarks,
-            ], fn ($v) => $v !== null);
-
-            if ($updateFields) {
-                $payment->update($updateFields);
             }
         });
 
@@ -288,41 +249,17 @@ class PaymentController extends Controller
             $loan   = Loan::with('client')->findOrFail($payment->loan_id);
             $amount = (float) $payment->amount;
 
-            $wasPayd   = $loan->status === 'paid';
-            $newBalance = $loan->current_balance + $amount;
+            $payment->delete();
 
-            $loan->update([
-                'current_balance' => $newBalance,
-                'status'          => $wasPayd ? 'active' : $loan->status,
-            ]);
-
-            if ($wasPayd) {
-                $loan->client->update(['status' => 'active']);
-            }
-
-            // Reset the matching schedule row
-            $scheduleRow = ScheduleRow::where('loan_id', $loan->id)
-                ->whereDate('payment_date', $payment->payment_date)
-                ->orderBy('scheduled_date')
-                ->first();
-
-            if ($scheduleRow) {
-                $newActual = max(0, (float) $scheduleRow->actual - $amount);
-                $scheduleRow->update([
-                    'actual'        => $newActual,
-                    'payment_date'  => $newActual > 0 ? $scheduleRow->payment_date : null,
-                    'balance_after' => $newBalance,
-                    'status'        => $newActual <= 0 ? 'pending' : 'partial',
-                ]);
-            }
+            // Rebuild the ledger (balance/status + daily schedule) without this payment.
+            $loan->recalculatePaymentLedger();
+            $newBalance = (float) $loan->current_balance;
 
             AuditLog::record(
                 'DELETE_PAYMENT',
                 $loan->number,
                 "Admin deleted payment #{$payment->id}: ₱{$amount} for loan {$loan->number}. Balance restored to ₱{$newBalance}."
             );
-
-            $payment->delete();
         });
 
         return response()->json(['message' => 'Payment deleted and loan balance restored.']);
@@ -409,35 +346,13 @@ class PaymentController extends Controller
                     'new_balance'      => $newBalance,
                     'remarks'          => $r['remarks'],
                 ]);
-
-                $loan->update([
-                    'current_balance' => $newBalance,
-                    'status'          => $newBalance <= 0 ? 'paid' : $loan->status,
-                ]);
-
-                if ($newBalance <= 0) {
-                    $loan->client->update(['status' => 'paid', 'type' => 'renew']);
-                }
-
-                $scheduleRow = ScheduleRow::where('loan_id', $loan->id)
-                    ->whereDate('scheduled_date', $r['payment_date'])
-                    ->whereIn('status', ['pending', 'partial'])
-                    ->first()
-                    ?? ScheduleRow::where('loan_id', $loan->id)
-                        ->whereIn('status', ['pending', 'partial'])
-                        ->orderBy('scheduled_date')
-                        ->first();
-
-                if ($scheduleRow) {
-                    $newActual = $scheduleRow->actual + $r['amount'];
-                    $scheduleRow->update([
-                        'actual'        => $newActual,
-                        'payment_date'  => $r['payment_date'],
-                        'balance_after' => $newBalance,
-                        'status'        => $newActual >= $scheduleRow->expected ? 'paid' : 'partial',
-                    ]);
-                }
+                // Loan balance/status, client status, and schedule_rows are all
+                // normalized by the per-loan recalculatePaymentLedger() after the batch.
             }
+
+            // Normalize each affected loan's ledger once the whole batch is in.
+            collect($valid)->pluck('loan')->unique('id')
+                ->each(fn (Loan $loan) => $loan->recalculatePaymentLedger());
 
             AuditLog::record('BULK_PAYMENT_UPLOAD', 'BULK', 'Bulk uploaded ' . count($payments) . ' payments via CSV');
 
