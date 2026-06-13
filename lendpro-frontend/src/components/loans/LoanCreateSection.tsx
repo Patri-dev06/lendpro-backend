@@ -88,6 +88,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
   const [saving, setSaving]       = useState(false);
   const [errors, setErrors]       = useState<Record<string, string>>({});
   const [createdLoanNumber, setCreatedLoanNumber] = useState<string | undefined>(undefined);
+  const [nextLoanNumber, setNextLoanNumber] = useState<string | undefined>(undefined);
   const [clientSearchBy, setClientSearchBy] = useState<"name" | "number" | "store">("name");
 
   const tilaRef      = useRef<HTMLDivElement>(null);
@@ -138,7 +139,16 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
     }
   }, [token]);
 
+  const loadNextNumber = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await apiRequest<{ number: string }>("GET", "loans/next-number", { token });
+      setNextLoanNumber(res.number);
+    } catch { /* leave undefined — print stays disabled until available */ }
+  }, [token]);
+
   useEffect(() => { fetchDropdowns(); }, [fetchDropdowns]);
+  useEffect(() => { loadNextNumber(); }, [loadNextNumber]);
 
   // Auto-derive loan type from the selected client's type field
   useEffect(() => {
@@ -224,6 +234,7 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
       setClientId(null);
       setLoanType("new-loan");
       setCreatedLoanNumber(undefined);
+      loadNextNumber();   // advance the previewed number for the next loan
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create loan.");
     } finally {
@@ -232,13 +243,15 @@ export function LoanCreateSection({ token, onLoanCreated, initialClientId }: Pro
   }
 
   const selectedClient = clients.find((c) => c.id === clientId);
-  const canPrint       = !!selectedClient && principal > 0 && !!date;
+  // The number the loan will actually receive on creation (or the real one once created).
+  const printLoanNumber = createdLoanNumber ?? nextLoanNumber;
+  const canPrint        = !!selectedClient && principal > 0 && !!date && !!printLoanNumber;
 
   const printParams = {
     client:   selectedClient ?? { name: "", store_name: "", address: "", phone: "" },
     loanType, date, principal, interest, sc,
     totalLoanAmount, totalReceivable, daily, termDays, dueDate, remarks,
-    loanNumber: createdLoanNumber,
+    loanNumber: printLoanNumber,
   };
 
   if (loadingData) {

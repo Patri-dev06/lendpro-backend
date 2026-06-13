@@ -64,6 +64,7 @@ Route::middleware('auth:sanctum')->group(function () {
     /* ── Loans ── */
     Route::middleware('role:admin,manager,accounting_clerk,collector')->group(function () {
         Route::get('loans',                    [LoanController::class, 'index']);
+        Route::get('loans/next-number',        [LoanController::class, 'nextNumber']);
         Route::get('loans/{loan}',             [LoanController::class, 'show']);
         Route::get('loans/{loan}/schedule',    [LoanController::class, 'schedule']);
         Route::get('loans/{loan}/penalties',   [LoanController::class, 'penalties']);

@@ -28,6 +28,15 @@ class LoanController extends Controller
         return response()->json($loans);
     }
 
+    /**
+     * Returns the loan number that the next created loan will receive,
+     * so disclosure forms can be previewed with the real number.
+     */
+    public function nextNumber(): JsonResponse
+    {
+        return response()->json(['number' => Loan::generateNumber()]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([

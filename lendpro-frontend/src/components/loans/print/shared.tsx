@@ -29,7 +29,7 @@ export interface PrintDocumentProps {
 }
 
 export function loanNum(p: Pick<PrintDocumentProps, "loanNumber">): string {
-  return p.loanNumber ?? `LN-${new Date().getFullYear()}-DRAFT`;
+  return p.loanNumber ?? "";
 }
 
 export function loanTypeLabel(type: string): string {
