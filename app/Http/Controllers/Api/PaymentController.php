@@ -23,6 +23,8 @@ class PaymentController extends Controller
             ->when($request->client_id, fn ($q, $id) => $q->where('client_id', $id))
             ->when($request->collector_id, fn ($q, $id) => $q->where('collector_id', $id))
             ->when($request->date, fn ($q, $d) => $q->whereDate('payment_date', $d))
+            ->when($request->from_date, fn ($q, $d) => $q->whereDate('payment_date', '>=', $d))
+            ->when($request->to_date, fn ($q, $d) => $q->whereDate('payment_date', '<=', $d))
             ->orderByDesc('payment_date')
             ->get();
 

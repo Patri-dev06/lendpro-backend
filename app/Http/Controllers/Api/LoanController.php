@@ -20,6 +20,8 @@ class LoanController extends Controller
             ->when($request->status, fn ($q, $s) => $q->where('status', $s))
             ->when($request->collector_id, fn ($q, $id) => $q->where('collector_id', $id))
             ->when($request->client_id, fn ($q, $id) => $q->where('client_id', $id))
+            ->when($request->from_date, fn ($q, $d) => $q->whereDate('release_date', '>=', $d))
+            ->when($request->to_date, fn ($q, $d) => $q->whereDate('release_date', '<=', $d))
             ->latest()
             ->get();
 
