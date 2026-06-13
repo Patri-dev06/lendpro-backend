@@ -75,7 +75,7 @@ class Loan extends Model
             ->map(fn($n) => (int) substr($n, strlen($prefix)))
             ->max() ?? 0;
 
-        return sprintf('LN-%d-%04d', $year, $max + 1);
+        return sprintf('LN-%d-%012d', $year, $max + 1);
     }
 
     public static function computeDueDate(string $releaseDate, int $termDays, array $holidays = []): Carbon
