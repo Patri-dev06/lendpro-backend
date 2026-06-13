@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Loader2, Pencil, Search, Trash2, X } from "lucide-react";
+import { CheckCircle2, Download, FileSpreadsheet, Loader2, Pencil, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -12,7 +12,10 @@ import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { hasPermission } from "@/lib/permissions";
 import { formatPHP, formatDate } from "@/lib/format";
+import { downloadCsv, downloadTablePdf, exportDate } from "@/lib/export";
 import { toast } from "sonner";
+
+const HISTORY_COLUMNS = ["Date", "Client", "Amount", "Previous", "New balance", "Remarks"];
 
 const PAGE_SIZE = 20;
 
@@ -153,6 +156,56 @@ export function DirectInputTab() {
     () => filteredHistory.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
     [filteredHistory, page],
   );
+
+  // ── Export (mirrors what is displayed: the filtered history + a Total row) ──
+
+  const historyTotals = useMemo(() => ({
+    amount:     filteredHistory.reduce((s, p) => s + p.amount, 0),
+    previous:   filteredHistory.reduce((s, p) => s + p.previous_balance, 0),
+    newBalance: filteredHistory.reduce((s, p) => s + p.new_balance, 0),
+  }), [filteredHistory]);
+
+  const historySubtitle = historySearch ? `Filtered by “${historySearch}”` : "All clients";
+
+  function exportHistoryCsv() {
+    if (filteredHistory.length === 0) return;
+    const rows = filteredHistory.map((p) => [
+      formatDate(p.payment_date), p.client.name,
+      p.amount.toFixed(2), p.previous_balance.toFixed(2), p.new_balance.toFixed(2),
+      p.remarks ?? "",
+    ]);
+    const totalRow = [
+      "Total", `${filteredHistory.length} transactions`,
+      historyTotals.amount.toFixed(2), historyTotals.previous.toFixed(2), historyTotals.newBalance.toFixed(2),
+      "",
+    ];
+    downloadCsv(`payment-history-${exportDate()}`, HISTORY_COLUMNS, [...rows, totalRow]);
+  }
+
+  function exportHistoryPdf() {
+    if (filteredHistory.length === 0) return;
+    const rows = filteredHistory.map((p) => [
+      formatDate(p.payment_date), p.client.name,
+      formatPHP(p.amount), formatPHP(p.previous_balance), formatPHP(p.new_balance),
+      p.remarks ?? "—",
+    ]);
+    downloadTablePdf({
+      title: "Recent payment history",
+      subtitle: historySubtitle,
+      columns: [
+        { header: "Date" }, { header: "Client" },
+        { header: "Amount", align: "right" }, { header: "Previous", align: "right" },
+        { header: "New balance", align: "right" }, { header: "Remarks" },
+      ],
+      rows,
+      totalRow: [
+        "Total", `${filteredHistory.length} transactions`,
+        formatPHP(historyTotals.amount), formatPHP(historyTotals.previous), formatPHP(historyTotals.newBalance),
+        "",
+      ],
+      onPopupBlocked: () => toast.error("Popup blocked. Allow popups for this site and try again."),
+    });
+  }
 
   function updateEntry(loanId: number, field: "amount" | "remarks", value: string) {
     setEntries((prev) => prev.map((e) => e.loanId === loanId ? { ...e, [field]: value, error: undefined } : e));
@@ -587,14 +640,22 @@ export function DirectInputTab() {
                 {historySearch ? `${filteredHistory.length} of ${history.length}` : history.length} payment{history.length !== 1 ? "s" : ""} across all clients
               </p>
             </div>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="h-8 w-52 pl-8 text-sm"
-                placeholder="Search client or remarks…"
-                value={historySearch}
-                onChange={(e) => setHistorySearch(e.target.value)}
-              />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="h-8 w-52 pl-8 text-sm"
+                  placeholder="Search client or remarks…"
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                />
+              </div>
+              <Button variant="outline" size="sm" className="h-8" onClick={exportHistoryCsv} disabled={filteredHistory.length === 0}>
+                <FileSpreadsheet className="mr-1.5 h-4 w-4" />Export CSV
+              </Button>
+              <Button variant="outline" size="sm" className="h-8" onClick={exportHistoryPdf} disabled={filteredHistory.length === 0}>
+                <Download className="mr-1.5 h-4 w-4" />Export PDF
+              </Button>
             </div>
           </div>
         </div>

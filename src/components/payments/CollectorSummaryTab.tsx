@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Printer } from "lucide-react";
+import { Download, FileSpreadsheet, Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,7 +8,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { apiRequest } from "@/lib/api";
 import { useRole } from "@/lib/role-context";
 import { formatPHP } from "@/lib/format";
+import { downloadCsv, downloadTablePdf } from "@/lib/export";
 import { toast } from "sonner";
+
+const SUMMARY_COLUMNS = ["Loan #", "Client Name", "Daily", "Missed (Carry-over)", "Total Collectible", "Payment"];
 
 interface SummaryRow {
   loan_number: string;
@@ -99,6 +102,51 @@ ${content}
   const rows   = [...(summary?.rows ?? [])].sort((a, b) => a.client_name.localeCompare(b.client_name));
   const totals = summary?.totals ?? { collectible: 0, balance: 0, payment: 0 };
 
+  // ── Export (same columns as displayed, with a Total for every numeric one) ──
+
+  const fileLabel = fromDate === toDate ? fromDate : `${fromDate}_to_${toDate}`;
+  const dailyTotal = rows.reduce((s, r) => s + r.daily, 0);
+  const carryTotal = rows.reduce((s, r) => s + r.carry_over, 0);
+
+  function exportSummaryCsv() {
+    if (rows.length === 0) return;
+    const data = rows.map((r) => [
+      r.loan_number, r.client_name,
+      r.daily.toFixed(2), r.carry_over.toFixed(2), r.collectible.toFixed(2), r.payment.toFixed(2),
+    ]);
+    const totalRow = [
+      "Total", `${rows.length} clients`,
+      dailyTotal.toFixed(2), carryTotal.toFixed(2), totals.collectible.toFixed(2), totals.payment.toFixed(2),
+    ];
+    downloadCsv(`collection-summary-${fileLabel}`, SUMMARY_COLUMNS, [...data, totalRow]);
+  }
+
+  function exportSummaryPdf() {
+    if (rows.length === 0) return;
+    const data = rows.map((r) => [
+      r.loan_number, r.client_name,
+      formatPHP(r.daily),
+      r.carry_over > 0 ? `+${formatPHP(r.carry_over)}` : "—",
+      formatPHP(r.collectible),
+      r.payment > 0 ? formatPHP(r.payment) : "—",
+    ]);
+    downloadTablePdf({
+      title: "Collection Summary",
+      subtitle: dateLabel,
+      columns: [
+        { header: "Loan #" }, { header: "Client Name" },
+        { header: "Daily", align: "right" }, { header: "Missed (Carry-over)", align: "right" },
+        { header: "Total Collectible", align: "right" }, { header: "Payment", align: "right" },
+      ],
+      rows: data,
+      totalRow: [
+        "Total", `${rows.length} clients`,
+        formatPHP(dailyTotal), formatPHP(carryTotal), formatPHP(totals.collectible), formatPHP(totals.payment),
+      ],
+      onPopupBlocked: () => toast.error("Popup blocked. Allow popups for this site and try again."),
+    });
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -123,9 +171,17 @@ ${content}
             placeholder="Search collector…"
           />
         </div>
-        <Button variant="outline" className="ml-auto self-end" onClick={handlePrint} disabled={loading || rows.length === 0}>
-          <Printer className="mr-2 h-4 w-4" />Print Summary
-        </Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2 self-end">
+          <Button variant="outline" onClick={exportSummaryCsv} disabled={loading || rows.length === 0}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" />Export CSV
+          </Button>
+          <Button variant="outline" onClick={exportSummaryPdf} disabled={loading || rows.length === 0}>
+            <Download className="mr-2 h-4 w-4" />Export PDF
+          </Button>
+          <Button variant="outline" onClick={handlePrint} disabled={loading || rows.length === 0}>
+            <Printer className="mr-2 h-4 w-4" />Print Summary
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-2xl border bg-card shadow-sm">
