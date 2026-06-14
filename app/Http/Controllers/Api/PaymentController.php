@@ -50,7 +50,7 @@ class PaymentController extends Controller
 
         $payment = DB::transaction(function () use ($data, $loan) {
             $prev = $loan->current_balance;
-            $newBalance = max(0, $prev - $data['amount']);
+            $newBalance = max(0, round($prev - $data['amount'], 2));
 
             $payment = Payment::create([
                 'loan_id'          => $loan->id,
@@ -333,7 +333,7 @@ class PaymentController extends Controller
             foreach ($valid as $r) {
                 $loan       = $r['loan'];
                 $prev       = $loan->current_balance;
-                $newBalance = max(0, $prev - $r['amount']);
+                $newBalance = max(0, round($prev - $r['amount'], 2));
 
                 $payments[] = Payment::create([
                     'loan_id'          => $loan->id,

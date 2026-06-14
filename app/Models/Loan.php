@@ -200,7 +200,7 @@ class Loan extends Model
             $date->addDay();
 
             $prev    = $balance;
-            $balance = max(0, $balance - $this->daily_payment);
+            $balance = max(0, round($prev - $this->daily_payment, 2));
 
             $rows[] = [
                 'loan_id'          => $this->id,
