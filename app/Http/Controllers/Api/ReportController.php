@@ -101,12 +101,13 @@ class ReportController extends Controller
 
     public function auditLogs(Request $request): JsonResponse
     {
+        $perPage = min((int) ($request->per_page ?? 100), 500);
+
         $logs = \App\Models\AuditLog::with('user')
             ->when($request->action, fn ($q, $a) => $q->where('action', $a))
             ->when($request->user_id, fn ($q, $id) => $q->where('user_id', $id))
             ->orderByDesc('performed_at')
-            ->limit(2000)
-            ->get();
+            ->paginate($perPage);
 
         return response()->json($logs);
     }

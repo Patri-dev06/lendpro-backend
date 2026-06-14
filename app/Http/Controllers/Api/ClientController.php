@@ -7,12 +7,15 @@ use App\Models\AuditLog;
 use App\Models\Client;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ClientController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $clients = Client::with([
+        $perPage = min((int) ($request->per_page ?? 100), 500);
+
+        $paginator = Client::with([
                 'collector',
                 'loans' => fn ($q) => $q->whereNotIn('status', ['paid', 'pending']),
             ])
@@ -27,14 +30,15 @@ class ClientController extends Controller
             ->when($request->status,       fn ($q, $s)  => $q->where('status', $s))
             ->when($request->collector_id, fn ($q, $id) => $q->where('collector_id', $id))
             ->orderBy('name')
-            ->get()
-            ->map(function ($client) {
-                $arr = $client->toArray();
-                $arr['has_outstanding_loan'] = $client->loans->isNotEmpty();
-                return $arr;
-            });
+            ->paginate($perPage);
 
-        return response()->json($clients);
+        $paginator->getCollection()->transform(function ($client) {
+            $arr = $client->toArray();
+            $arr['has_outstanding_loan'] = $client->loans->isNotEmpty();
+            return $arr;
+        });
+
+        return response()->json($paginator);
     }
 
     public function store(Request $request): JsonResponse
@@ -75,23 +79,25 @@ class ClientController extends Controller
             ->exists();
 
         $data['approval_status'] = ($dupByName || $dupByStore) ? 'pending_approval' : 'approved';
-
-        $year          = now()->year;
-        $seq           = Client::withTrashed()->whereYear('created_at', $year)->count() + 1;
-        $data['number'] = sprintf('CL-%d-%03d', $year, $seq);
-        $data['status'] = $data['type'];
-
-        $client = Client::create($data);
+        $data['status']          = $data['type'];
 
         $reason = $dupByName && $dupByStore
             ? 'duplicate name and store'
             : ($dupByName ? 'duplicate name' : ($dupByStore ? 'duplicate store' : ''));
 
-        AuditLog::record(
-            'CREATE_CLIENT',
-            $client->number,
-            "Created client {$client->name}" . ($reason ? " — pending approval ({$reason})" : '')
-        );
+        $client = DB::transaction(function () use ($data, $reason) {
+            $year           = now()->year;
+            $seq            = Client::withTrashed()->whereYear('created_at', $year)->lockForUpdate()->count() + 1;
+            $data['number'] = sprintf('CL-%d-%03d', $year, $seq);
+
+            $client = Client::create($data);
+            AuditLog::record(
+                'CREATE_CLIENT',
+                $client->number,
+                "Created client {$client->name}" . ($reason ? " — pending approval ({$reason})" : '')
+            );
+            return $client;
+        });
 
         return response()->json(
             array_merge($client->load('collector')->toArray(), ['has_outstanding_loan' => false]),

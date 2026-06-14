@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\LoanPenalty;
+use App\Models\Payment;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Loan extends Model
@@ -69,7 +70,8 @@ class Loan extends Model
             ->orderBy('id')
             ->get();
 
-        $running = (float) $this->total_receivable;
+        $running        = (float) $this->total_receivable;
+        $paymentUpdates = [];
 
         foreach ($payments as $payment) {
             // NULL balances mark a non-ledger fee row (e.g. Processing Fee).
@@ -81,27 +83,43 @@ class Loan extends Model
             $running = max(0, round($prev - (float) $payment->amount, 2));
 
             if ((float) $payment->previous_balance !== $prev || (float) $payment->new_balance !== $running) {
-                $payment->update(['previous_balance' => $prev, 'new_balance' => $running]);
+                $paymentUpdates[] = [
+                    'id'               => $payment->id,
+                    'previous_balance' => $prev,
+                    'new_balance'      => $running,
+                ];
             }
         }
 
-        $wasPaid = $this->status === 'paid';
-        $isPaid  = $running <= 0;
+        if (! empty($paymentUpdates)) {
+            Payment::upsert($paymentUpdates, ['id'], ['previous_balance', 'new_balance']);
+        }
+
+        $wasPaid   = $this->status === 'paid';
+        $isPaid    = $running <= 0;
+        $isOverdue = in_array($this->status, ['overdue', 'past-due'], true);
 
         // A loan that is no longer fully paid reverts to the client's loan type
         // (new/renew) — the same status release assigns. "active" is not a valid
         // loans/clients status per the DB check constraints.
         $restored = in_array($this->client?->type, ['new', 'renew'], true) ? $this->client->type : 'new';
 
+        // Restore overdue/past-due to active if the due date hasn't arrived yet,
+        // meaning the client paid enough to bring the loan current.
+        $duePassed = $this->due_date && Carbon::today()->gt(Carbon::parse($this->due_date));
+        $caughtUp  = $isOverdue && ! $duePassed;
+
+        $newStatus = $isPaid ? 'paid' : ($wasPaid || $caughtUp ? $restored : $this->status);
+
         $this->update([
             'current_balance' => $running,
-            'status'          => $isPaid ? 'paid' : ($wasPaid ? $restored : $this->status),
+            'status'          => $newStatus,
         ]);
 
         if ($this->client) {
             if ($isPaid) {
                 $this->client->update(['status' => 'paid', 'type' => 'renew']);
-            } elseif ($wasPaid) {
+            } elseif ($wasPaid || $caughtUp) {
                 $this->client->update(['status' => $restored]);
             }
         }
@@ -140,7 +158,10 @@ class Loan extends Model
             $applied[$target->id]['date']    = $pdate; // payments are ordered asc → latest wins
         }
 
-        $running = (float) $this->total_receivable;
+        $running       = (float) $this->total_receivable;
+        $scheduleUpsert = [];
+        $now           = now()->toDateTimeString();
+
         foreach ($rows as $row) {
             $actual  = round($applied[$row->id]['actual'], 2);
             $prev    = $running;
@@ -149,13 +170,26 @@ class Loan extends Model
                 ? 'pending'
                 : ($actual >= (float) $row->expected ? 'paid' : 'partial');
 
-            $row->update([
+            $scheduleUpsert[] = [
+                'id'               => $row->id,
+                'loan_id'          => $this->id,
+                'scheduled_date'   => $row->scheduled_date,
+                'expected'         => $row->expected,
                 'actual'           => $actual,
                 'payment_date'     => $applied[$row->id]['date'],
                 'previous_balance' => $prev,
                 'balance_after'    => $running,
                 'status'           => $status,
-            ]);
+                'updated_at'       => $now,
+            ];
+        }
+
+        if (! empty($scheduleUpsert)) {
+            ScheduleRow::upsert(
+                $scheduleUpsert,
+                ['id'],
+                ['actual', 'payment_date', 'previous_balance', 'balance_after', 'status', 'updated_at']
+            );
         }
     }
 
@@ -171,11 +205,12 @@ class Loan extends Model
 
     public static function generateNumber(): string
     {
-        $year = now()->year;
+        $year   = now()->year;
         $prefix = "LN-{$year}-";
 
         $max = static::withTrashed()
             ->where('number', 'like', $prefix . '%')
+            ->lockForUpdate()
             ->pluck('number')
             ->map(fn($n) => (int) substr($n, strlen($prefix)))
             ->max() ?? 0;
@@ -198,6 +233,11 @@ class Loan extends Model
 
         for ($i = 0; $i < $this->term_days; $i++) {
             $date->addDay();
+
+            // Sundays are not collection days — skip creating a schedule row.
+            if ($date->dayOfWeek === Carbon::SUNDAY) {
+                continue;
+            }
 
             $prev    = $balance;
             $balance = max(0, round($prev - $this->daily_payment, 2));

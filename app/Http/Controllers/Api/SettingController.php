@@ -23,11 +23,24 @@ class SettingController extends Controller
         return response()->json($settings);
     }
 
+    private const ALLOWED_KEYS = [
+        'admin_pin',
+        'default_service_charge',
+        'default_loan_term',
+        'loan_term_options',
+        'holidays',
+        'session_timeout_minutes',
+        'company_name',
+        'company_address',
+        'company_phone',
+        'company_email',
+    ];
+
     public function update(Request $request): JsonResponse
     {
         $data = $request->validate([
             'settings'         => 'required|array',
-            'settings.*.key'   => 'required|string|max:100',
+            'settings.*.key'   => ['required', 'string', 'max:100', 'in:' . implode(',', self::ALLOWED_KEYS)],
             'settings.*.value' => 'nullable|string',
         ]);
 

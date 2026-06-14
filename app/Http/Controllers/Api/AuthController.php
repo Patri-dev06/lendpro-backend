@@ -8,6 +8,7 @@ use App\Models\Notification;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
@@ -16,24 +17,37 @@ class AuthController extends Controller
 {
     public function register(Request $request): JsonResponse
     {
-        $request->validate([
-            'name'                  => 'required|string|max:255',
+        $data = $request->validate([
+            'first_name'            => 'required|string|max:255',
+            'middle_name'           => 'nullable|string|max:255',
+            'last_name'             => 'required|string|max:255',
             'email'                 => 'required|email|unique:users,email',
             'role'                  => 'required|in:admin,collector,manager,sysadmin,accounting_clerk',
             'password'              => ['required', 'string', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
         ], [
             'email.unique'          => 'This email is already in use. Please use a different one.',
-            'name.required'         => 'Full name is required.',
+            'first_name.required'   => 'First name is required.',
+            'last_name.required'    => 'Last name is required.',
             'email.required'        => 'Email address is required.',
             'email.email'           => 'Please enter a valid email address.',
             'password.confirmed'    => 'Passwords do not match.',
         ]);
 
+        foreach (['first_name', 'middle_name', 'last_name'] as $field) {
+            if (!empty($data[$field])) $data[$field] = strtoupper($data[$field]);
+        }
+
+        $nameParts = array_filter([$data['first_name'], $data['middle_name'] ?? null, $data['last_name']]);
+        $fullName  = implode(' ', $nameParts);
+
         $user = User::create([
-            'name'        => $request->name,
-            'email'       => $request->email,
-            'role'        => $request->role,
-            'password'    => Hash::make($request->password),
+            'name'        => $fullName,
+            'first_name'  => $data['first_name'],
+            'middle_name' => $data['middle_name'] ?? null,
+            'last_name'   => $data['last_name'],
+            'email'       => $data['email'],
+            'role'        => $data['role'],
+            'password'    => Hash::make($data['password']),
             'is_approved' => false,
         ]);
 
@@ -73,19 +87,19 @@ class AuthController extends Controller
             ], 403);
         }
 
-        $token = $user->createToken('api-token')->plainTextToken;
+        Auth::login($user);
+        $request->session()->regenerate();
 
         AuditLog::record('LOGIN', "USR-{$user->id}", "User {$user->name} logged in", $user->id);
 
-        return response()->json([
-            'user'  => $this->userPayload($user),
-            'token' => $token,
-        ]);
+        return response()->json($this->userPayload($user));
     }
 
     public function logout(Request $request): JsonResponse
     {
-        $request->user()->currentAccessToken()->delete();
+        Auth::guard('web')->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
         return response()->json(['message' => 'Logged out successfully.']);
     }
 
@@ -112,6 +126,9 @@ class AuthController extends Controller
         }
 
         $user->update(['password' => Hash::make($request->password)]);
+
+        // Regenerate session so any hijacked sessions are invalidated.
+        $request->session()->regenerate();
 
         AuditLog::record('UPDATE', "USR-{$user->id}", "User {$user->name} changed their password", $user->id);
 

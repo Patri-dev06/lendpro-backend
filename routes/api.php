@@ -13,8 +13,9 @@ use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 /* ---------- Public ---------- */
-Route::post('auth/login',    [AuthController::class, 'login']);
-Route::post('auth/register', [AuthController::class, 'register']);
+// 5 attempts per minute per IP to limit brute-force on login; 10/min for register.
+Route::middleware('throttle:5,1')->post('auth/login',    [AuthController::class, 'login']);
+Route::middleware('throttle:10,1')->post('auth/register', [AuthController::class, 'register']);
 
 /* ---------- Protected ---------- */
 Route::middleware('auth:sanctum')->group(function () {

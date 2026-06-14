@@ -16,6 +16,8 @@ class LoanController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $perPage = min((int) ($request->per_page ?? 100), 500);
+
         $loans = Loan::with(['client', 'collector'])
             ->when($request->status, fn ($q, $s) => $q->where('status', $s))
             ->when($request->collector_id, fn ($q, $id) => $q->where('collector_id', $id))
@@ -23,7 +25,7 @@ class LoanController extends Controller
             ->when($request->from_date, fn ($q, $d) => $q->whereDate('release_date', '>=', $d))
             ->when($request->to_date, fn ($q, $d) => $q->whereDate('release_date', '<=', $d))
             ->latest()
-            ->get();
+            ->paginate($perPage);
 
         return response()->json($loans);
     }
@@ -63,10 +65,10 @@ class LoanController extends Controller
         $data['current_balance']  = $data['total_receivable'];
         $data['due_date']         = Loan::computeDueDate($data['release_date'], $data['term_days'] + $data['holiday_count'], $holidays)->toDateString();
         $data['expected_end_date'] = $data['due_date'];
-        $data['number']           = Loan::generateNumber();
         $data['status']           = 'pending';
 
         $loan = DB::transaction(function () use ($data, $holidays) {
+            $data['number'] = Loan::generateNumber();
             $loan = Loan::create($data);
             $loan->generateSchedule($holidays);
             AuditLog::record('CREATE_LOAN', $loan->number, "Created {$data['loan_type']} for client #{$data['client_id']} (pending release)");

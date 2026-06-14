@@ -18,6 +18,7 @@ class PaymentController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $perPage  = min((int) ($request->per_page ?? 100), 500);
         $payments = Payment::with(['client', 'collector', 'recordedBy', 'loan:id,release_date', 'deleteRequestedBy:id,first_name,last_name'])
             ->when($request->loan_id, fn ($q, $id) => $q->where('loan_id', $id))
             ->when($request->client_id, fn ($q, $id) => $q->where('client_id', $id))
@@ -26,7 +27,7 @@ class PaymentController extends Controller
             ->when($request->from_date, fn ($q, $d) => $q->whereDate('payment_date', '>=', $d))
             ->when($request->to_date, fn ($q, $d) => $q->whereDate('payment_date', '<=', $d))
             ->orderByDesc('payment_date')
-            ->get();
+            ->paginate($perPage);
 
         return response()->json($payments);
     }
@@ -55,6 +56,7 @@ class PaymentController extends Controller
             $payment = Payment::create([
                 'loan_id'          => $loan->id,
                 'client_id'        => $loan->client_id,
+                'collector_id'     => $loan->collector_id,
                 'recorded_by'      => auth()->id(),
                 'payment_date'     => $data['payment_date'],
                 'amount'           => $data['amount'],
@@ -268,10 +270,14 @@ class PaymentController extends Controller
     public function uploadCsv(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => 'required|file|max:5120',
+            'file' => 'required|file|mimes:csv,txt|max:5120',
         ]);
 
-        $handle = fopen($request->file('file')->getRealPath(), 'r');
+        $path   = $request->file('file')->getRealPath();
+        $handle = fopen($path, 'r');
+        if ($handle === false) {
+            return response()->json(['message' => 'Could not read the uploaded file.'], 422);
+        }
 
         // Skip header row
         fgetcsv($handle);

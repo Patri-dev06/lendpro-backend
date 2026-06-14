@@ -39,7 +39,6 @@ class CollectorController extends Controller
                 'assigned'        => $c->clients->count(),
                 'expected'        => (float) $activeLoans->sum('daily_payment'),
                 'actual'          => (float) $todayActual,
-                'missed'          => (int) $activeLoans->where('status', 'overdue')->count(),
                 'overdue'         => (int) $activeLoans->where('status', 'overdue')->count(),
                 'past_due'        => (int) $activeLoans->where('status', 'past-due')->count(),
             ];
